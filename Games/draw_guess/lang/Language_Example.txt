@@ -1,0 +1,13 @@
+How to parse this page?
+```python
+print("\n".join([f.replace(f"Line {num}: ","").split("# ")[0] for num in range(0,len(open(__file__, 'r', encoding="utf-8").readlines())-5)])
+```
+# Parse(Not Include Line 1): [Command, Return Value, Text]
+--Main
+Line 1: "Be replaced punctuation":"Replaced punctuation" # Punctuation replace
+Line 2: Function name,return value,text(allow 'f"{something}"' expression) # Replace language
+Line ... # omiting...
+Comment Line: --Comments: start # Comments Start
+here is comment! # Comment
+--Comments: end # Comment End
+

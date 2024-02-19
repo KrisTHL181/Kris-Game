@@ -1,0 +1,8 @@
+@font-face {
+    font-family: 'genshin_impact_start';
+    src: url('genshin_75w.ttf') format('truetype');
+}
+*{
+    font-family: 'genshin_impact_start';
+    font-size: 1.5vw;
+}

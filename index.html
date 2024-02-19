@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Kris的「游戏跳转页」</title>
+    <script src="jQuery.min.js"></script>
+    <link rel="stylesheet" href="font.css">
+    <style>
+        .rooms_content {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex_start;
+            gap: 6px;
+            width: 400px;
+            box-sizing: border_box;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 16px;
+            line-height: 24px;
+            color: #333;
+            outline-color: #4f46e5;
+            overflow: auto;
+            cursor: text;
+        }
+
+        .room {
+            display: flex;
+            align-items: center;
+            padding: 4px 0 4px 8px;
+            font-size: 16px;
+            line-height: 24px;
+            background: #f5f5f5;
+            color: rgba(0, 0, 0, 0.85);
+            cursor: default;
+        }
+
+        .room_close {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            background: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.578 5l2.93_3.493a.089.089 0 0 0_.068_.146h_.891a.182.182 0 0 0_.137.064l_2.417 2.88_2.416_2.88a.178.178 0 0 0_.137_.064h_.89a.089.089 0 0 0_.069.146L4.413 5l_2.93 3.493a.089.089 0 0 0 .068.146h.89a.182.182 0 0 0 .138_.064l2.416_2.88 2.417 2.88c.033.04.083.064.137.064h.89a.089.089 0 0 0 .069_.146l_2.93_3.493z' fill='%23000' fill_opacity='.45'/%3E%3C/svg%3E") center no_repeat;
+        }
+
+        .rooms_input {
+            flex: auto;
+            border: 0;
+            outline: 0;
+            padding: 4px 0;
+            line-height: 24px;
+            font-size: 16px;
+            background-color: rgb(188, 247, 255)
+        }
+
+        .rooms_content:focus_within,
+        .rooms_content:active {
+            outline: auto #4f46e5;
+        }
+
+        .rooms_input:empty::before {
+            content: attr(placeholder);
+            color: #828282;
+        }
+
+        .rooms_input:only_collapse_:empty::before {
+            content: attr(placeholder);
+            color: #828282;
+        }
+
+        .fold {
+            width: 200px;
+            height: 51px;
+            transition: all 1s;
+            overflow: hidden;
+            text-align: center;
+            line-height: 50px;
+            background-color: transparent;
+            color: #000000;
+            border-radius: 5px;
+        }
+
+        .fold:hover {
+            height: 300px;
+        }
+
+        .collapse_0 {
+            width: 200px;
+            height: 50px;
+            background-color: #e0ff58;
+            border-radius: 5px;
+            display: inline-block;
+        }
+
+        .button {
+            background-color: #e0ff58;
+            border: none;
+            color: #000000;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+            cursor: pointer;
+        }
+
+        .select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            border: 2px solid #d8ff4d;
+            border-radius: 4px;
+            height: 2.2em;
+            padding: 0 24px 0 8px;
+            font-family: inherit;
+            color: #000000;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .mc_char {
+            width: 500px;
+            height: 80px;
+            position: absolute;
+            z-index: 50;
+            display: none;
+            transform: rotate(-7deg);
+        }
+
+        .mc_char .text,
+        .mc_char .shadow {
+            font-size: 0;
+            line-height: 40px;
+            text-align: center;
+            position: absolute
+        }
+
+        .mc_char .text {
+            width: 500px;
+            color: #ff0;
+            z-index: 2
+        }
+
+        .mc_char .shadow {
+            width: 500px;
+            margin: 3px 0 0 4px;
+            color: #3f3f00;
+            z-index: 1
+        }
+
+    </style>
+    <script>
+        function ws_ping(ip) {
+            return new RegExp("^(ws|wss)://[^\s/$.?#].[^\s]*$").test(ip)
+        }
+
+    </script>
+</head>
+
+<body style="background-color: powderblue;">
+    <center>
+        <div class="rooms_content">
+            <input class="rooms_input" id="room_input" placeholder="请输入房间号"></input>
+        </div>
+        <div class="rooms_content">
+            <input class="rooms_input" id="name_input" placeholder="请输入玩家名"></input>
+        </div>
+        <div class="mc_char" style="display: block;">
+            <div class="text" id="mc_text" style="font-size: 20px;">Kris的游戏服务器!</div>
+            <div class="shadow" id="mc_shadow" style="font-size: 20px;">Kris的游戏服务器!</div>
+        </div>
+        <p>选择游戏:
+            <select class="select" id="select">
+                <option value="draw_guess">你画我猜</option>
+            </select>
+        </p><br>
+        <button onclick="jump();" class="button">进入房间</button>
+        <br><br>
+        <p id="log" style="text-shadow: 0 8px 10px #6699FF;font-size:large">欢迎来到[Kris谭]的游戏服务器!<br>请自由选择您想玩的游戏!</p>
+    </center>
+    <script>
+        function CheckNameValid() {
+            var name = document.getElementById('name_input').value
+            if (name == 'Server' || name.length > 12 || name.includes(" ") || name.includes("'") || name.includes(
+                    '"')) {
+                return false;
+            }
+            return true;
+        }
+
+        function jump() {
+            if (document.getElementById('room_input').value == '' || +document.getElementById('name_input').value ==
+                '' || !ws_ping("ws://" + window.location.host + ":" + room_input.value + "/") || !CheckNameValid()) {
+                document.getElementById("log").innerHTML = "请输入正确的房间号和名字!"
+                return
+            } else {
+                window.location.href = '/Games/' + document.getElementById('select').options[select.selectedIndex]
+                    .value +
+                    '/index.html?port=' +
+                    document.getElementById('room_input').value + '&name=' + document.getElementById('name_input').value
+            }
+        }
+
+        function mc_charMove() {
+            jQuery(".mc_char .text, .mc_char .shadow, .mc_char .text *, .mc_char .shadow *").animate({
+                    "font-size": "18px"
+                }, 200),
+                jQuery(".mc_char .text, .mc_char .shadow, .mc_char .text *, .mc_char .shadow *").animate({
+                    "font-size": "20px"
+                }, 200)
+        }
+        setInterval(mc_charMove, 200)
+
+        function RandArray(array) {
+            return array[Math.random() * array.length | 0];
+        }
+        var random_text = RandArray([RandArray(document.getElementById('select').options).innerHTML + "启动!",
+            "作者是Kris!"
+        ]);
+        document.getElementById("mc_text").innerHTML = random_text;
+        document.getElementById("mc_shadow").innerHTML = random_text;
+
+    </script>
+</body>

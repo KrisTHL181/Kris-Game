@@ -1,0 +1,6 @@
+nginx.htaccess
+.*/
+.htaccess
+.pylintrc
+Games/*/logs/
+Games/*/__pycache__/

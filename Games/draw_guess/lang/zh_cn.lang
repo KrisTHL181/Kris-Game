@@ -1,0 +1,87 @@
+"%comma%":"," # 替换字符串
+root.loaded_language,0,f"语言配置文档加载完成."
+root.loaded_prompt,0,f"默认提示符加载完成."
+root.loaded_bans,0,f"封禁列表加载完成."
+root.loaded_plugins,0,f"插件加载完成."
+root.loaded,0,f"导入了插件 {plugin} ."
+root.unchoosed_lang,0,f"语言(第2个参数)未选择%comma% 自动选择 'zh_cn' ..."
+root.unchoosed_port,0,f"WebSocket端口(第1个参数)未选择%comma% 自动选择 '3827' ..."
+root.unchoosed_http_port,0,f"HTTP端口(第4个参数)未选择%comma% 自动选择 '3872' ..."
+root.unchoosed_system_name,0,f"系统名(第3个参数)未选择%comma% 自动选择 'Server' ..."
+root.unknown_language,0,f"无法查询未定义的文本."
+root.config_not_found,0,f"配置项 {key} 未找到."
+root.ws_network_run_error,0,f"WebSocket网络服务器启动失败."
+plugin.load_error,0,f"插件 {plugin} 加载失败: {error} ."
+game.game_start,0,f"游戏开始!"
+game.command_interpreter.start_info,0,f"{Fore.LIGHTYELLOW_EX}欢迎来到Kris的你画我猜游戏服务器!\n{Fore.CYAN}这里是游戏命令解释器%comma% 使用 'get_commands' 命令来获取命令列表.\n{Fore.LIGHTRED_EX}当前时间: {time.strftime('%Y-%m-%d.%H:%M:%S')}\n"
+game.command_interpreter.server_offline,0,f"服务器不在线."
+game.command_interpreter.name_error,0,f"参数错误. 你忘了加引号吗?"
+game.command_interpreter.type_error,0,f"参数错误. 你输入的类型是正确的吗?"
+game.command_interpreter.syntax_error,0,f"语法错误. 你忘了加引号吗?"
+game.command_interpreter.eof_error,0,f"收到了异常的文件结束符."
+game.command_interpreter.server_stop,0,f"服务器已关闭."
+game.command_interpreter.error_stop,0,f"服务器异常关闭."
+game.command_interpreter.unhandled_exception,0,f"未经处理的异常: {type(err).__qualname__}: {err}."
+network.http_server.listening,0,f"HTTP服务器已启动. 正在监听 'http://{host}:{port}/'."
+network.http_server.set_header,0,f"回复信息头部已添加: {head}."
+network.http_server.set_status,0,f"回复信息状态已设定为: {self.status}."
+network.http_server.set_string_content,0,f"回复信息内容已设定为: {self.status.decode("utf-8)} ."
+network.http_server.set_content,0,f"回复信息内容已设定为: {content} ."
+network.http_server.reply_build,0,f"回复信息已设定为: {response.decode('utf-8')} ."
+network.http_server.connect,0,f"建立了连接: 请求来自 '{client_addr[0]}:{client_addr[1]}'."
+network.http_server.send_back,0,f"已将信息发回给 {client_addr[0]}:{client_addr[1]} ."
+network.http_server.file_contents,0,f"正在读取文件 {filename} ."
+network.http_server.check_binary,0,f"正在检测文件 {filename} 是否为二进制文档."
+network.http_server.full,0,f"已完成一次来自 {client_addr[0]}:{client_addr[1]} 的完整请求."
+network.http_server.recv_no_msg,0,f"{client_addr[0]}:{client_addr[1]} 没有发送任何请求信息."
+network.http_server.recv_error,0,f"在接收信息的时候发生异常: {conn_err}"
+network.http_server.process_response,0,f"正在处理连接信息: {request}."
+network.ws_server.recived,0,f"收到了Websocket信息: {message}"
+network.ws_server.json_decode_error,0,f"Websocket JSON解码失败."
+network.ws_server.json_missing_keyword,0,f"Websocket JSON缺少关键信息."
+network.player.send,0,f"玩家 '{data['sender']}'用 {data['color']} 的颜色说: {data['content']}"
+network.player.banned,0,f"被封禁的玩家 '{data['content']}' 尝试进入服务器."
+network.player.anonymous_send,0,f"匿名玩家用 {data['color']} 的颜色 说: {data['content']}"
+network.player.login,0,f"{data['content']} 登录了."
+network.player.duplicate_login,0,f"玩家 '{data['content']}' 已经登录过了, 踢了."
+network.player.duplicate_ban,0,f"玩家 '{player_name}' 已经被封禁过了."
+network.player.never_ban,0,f"玩家 '{player_name}' 没有被封禁过."
+network.player.logout,0,f"玩家 '{data['content']}' 已下线."
+network.player.update_paint,0,f"更新了画布."
+network.player.keep_alive,0,f"{data['content']} 发送了保活数据包."
+network.player.heartbeat_timeout,0,f"'玩家 '{player}' 已经超过 60 秒没有发送 保活数据包了, 踢了."
+network.player.ready,0,f"玩家 '{data['content']}' 准备好了."
+commands.run_compiled,0,f"编译后的执行语句: '{run_compiled}'"
+command.execute,0,f"玩家 '{executer}'({utils.get_player(executer).access}) 执行了命令 '{command}'({commands.command_access.get(compiled[0])})"
+command.execute.access_denied,-1,f"权限不足: 玩家 '{utils.get_player(executer).name}'({utils.get_player(executer).access}) 执行了命令 '{command}'({commands.command_access.get(command)})"
+command.clean_logs,0,f"删除所有日志文件从./logs/文件夹." # 清除日志
+command.del_alias,0,f"删除了别名 '{alias}'." # 删除别名
+command.del_alias,-2,f"别名 {alias} 不存在." # 删除别名
+command.get_commands,0,f"命令列表: {','.join(commands_list)}" # 获取命令列表
+command.kick,0,f"踢出了 '{player_name}'" # 踢出玩家
+command.list,0,f"服务器玩家列表: {','.join(lists)}." # 获取列表
+command.modify_access,0,f"修改了指令 '{command}' 的级别到 '{new_access}' ." # 修改权限
+command.new_alias,0,f"将别名 '{alias}' 添加为 '{command}' 命令." # 添加别名
+command.new_alias,-2,f"别名 '{alias}' 已存在."
+command.player_access,0,f" 玩家 '{player_name}' 的权限已更新为 '{access_}' ."
+command.player_access,-3,f"权限级 '{access_}' 未找到. 权限级列表: '{list(accesses.keys())}'" # 修改玩家权限
+command.player_access,-3.5,f"未知的玩家." # 修改玩家权限
+command.modify_access,-1,f"修改后的权限超过了最大级别(5)." # 修改指令权限
+command.modify_access,-1.5,f"修改后的权限低于最小级别(1)." # 修改指令权限
+command.del_alias,-2,f"别名 {alias} 不存在." # 删除别名
+command.kick,-3,f"玩家未找到." # 踢出玩家
+command.stop,0,f"游戏服务器正在关闭." # 延时停服
+command.execute.not_found,0,f"参数错误或命令'{command}'不存在."
+command.execute.syntax_detect,0,f"你的意思是 {detect[0]} 吗...?"
+command.kick.player_not_found,-3,f"玩家未找到"
+command.stop.delay_stop,0,f"游戏服务器将在 {delay} 秒后关闭."
+command.stop.delay_too_large,0,f"等待的时间太长了."
+command.stop.smaller_zero,0,f"等待的时长小于0秒."
+command.clean_logs,0,f"从 ./logs/ 文件夹删除了所有的日志文件."
+command.clean_logs,-1,f"因为权限错误%comma% 无法删除 '{file_path}' ."
+command.get_alias,0,f"别名列表: {','.join(all_alias)} ."
+command.ban,-3,f"请输入需封禁的玩家."
+command.ban,0,f"{player_name} 已被封禁."
+command.unban,-3,f"请输入需解封的玩家."
+command.unban,0,f"{player_name} 已被解除封禁."
+command.banlist,0,f"封禁列表: {', '.join(banlist)}"
