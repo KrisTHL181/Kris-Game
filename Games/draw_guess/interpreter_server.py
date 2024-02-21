@@ -637,7 +637,7 @@ class network:
                             vars(),
                         )
                     )
-                    commands.kick(data["content"])
+                    await commands.kick(data["content"])
                 if data["content"] in banlist:
                     logger.info(
                         utils.parse(
