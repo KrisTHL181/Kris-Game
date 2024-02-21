@@ -1,26 +1,27 @@
 #!/usr/bin/env python
-#coding=utf-8
+# coding=utf-8
+""" A draw&guess game, includes websocket server and http server."""
+from contextlib import suppress
+from mimetypes import types_map as mime_types
 import json
 import time
 import os
 import asyncio
 import threading
-from contextlib import suppress
-from sys import argv as arg, stderr
 import socket
 import typing
+import sys
+import functools
+import re
 from fuzzywuzzy import process
 from colorama import init, Fore
 from loguru import logger
-from mimetypes import types_map as mime_types
 import websockets
 
 init(autoreset=True)
 logger.remove()
-ALLOW_PRINT = False
 if __name__ == "__main__":
-    logger.add(stderr, level=0, enqueue=False)  # 命令行句柄
-    ALLOW_PRINT = True
+    logger.add(sys.stderr, level=0, enqueue=False)  # 命令行句柄
 logger.add(
     f"./logs/{time.strftime('%Y.%m.%d.log')}",
     encoding="utf-8",
@@ -36,10 +37,13 @@ accesses = {"server": 4, "admin": 3, "player": 2, "spectators": 1, "banned": 0}
 
 
 class player:
+    """A class for player."""
+
     def __init__(self, name, websocket, access=2):
         self.name = name
         self.websocket = websocket
         self.access = access
+        self.scores = 0
         self.last_heartbeat = time.time()
 
     def __str__(self):
@@ -50,181 +54,276 @@ players = []
 
 
 class utils:
+    """A class to encapsulates codes"""
+
     @staticmethod
+    @functools.cache
     def get_message(eqalname, value) -> str:
+        """Query message in language file."""
         try:
-            out = str(lang[eqalname + "." + str(value)])
+            return str(lang[eqalname + "." + str(value)]).strip()
         except KeyError:
-            return str(lang[("root.unknown_language.0")])
-        return out
+            return str(lang[("root.unknown_language.0")]).strip()
 
     @staticmethod
     def get_players() -> list:
-        return [vars(iter_player)["name"] for iter_player in players]
+        """Get all player's name."""
+        return [iter_player.name for iter_player in players]
 
     @staticmethod
     def get_player(name) -> player:
+        """Get player object by name"""
         if name == SYSTEM_NAME:
             return player(SYSTEM_NAME, None, accesses.get("server"))
         return [iter_player for iter_player in players if iter_player.name == name][0]
 
     @staticmethod
     def delete_player(name) -> None:
+        """Remove a player from players list."""
         players.remove(utils.get_player(name))
 
     @staticmethod
     def login_player(name, websocket) -> player:
+        """Added 1 player to players list."""
         logined_player = player(name, websocket)
         players.append(name)
         return logined_player
 
     @staticmethod
     def get_websocket(name):
+        """Get player's websocket object."""
         return [
             iter_player.websocket for iter_player in players if iter_player.name == name
         ][0]
 
     @staticmethod
     def get_websockets() -> list:
+        """Get all the player's websocket object."""
         return [iter_player.websocket for iter_player in players]
 
     @staticmethod
+    @functools.cache
     def query_config(key):
-        return config.get(key, eval(utils.get_message("root.config_not_found", 0)))
+        """Query config in config file."""
+        try:
+            return str(config[key]).strip()
+        except KeyError:
+            return utils.parse(utils.get_message("root.config_not_found", 0), vars())
+
+    @staticmethod
+    def override_excepthook(err_type, err_value, err_traceback):
+        """better sys.excepthook."""
+        logger.critical(
+            utils.parse(
+                utils.get_message(
+                    "Game.command_interpreter.unhandled_critical_exception", 0
+                ), vars()
+            )
+        )
+        logger.exception(err_traceback)
+
+    @staticmethod
+    def reverse_replace(string, old, new, max_count=-1) -> str:
+        """Reverse string and replace string"""
+        # 从后往前查找旧字符串
+        reversed_string = string[::-1]
+        reversed_old = old[::-1]
+        reversed_new = new[::-1]
+
+        # 替换
+        if max_count == -1:
+            reversed_result = reversed_string.replace(reversed_old, reversed_new)
+        else:
+            reversed_result = reversed_string.replace(
+                reversed_old, reversed_new, max_count
+            )
+
+        # 将结果反转回来
+        result = reversed_result[::-1]
+        return result
+
+    placeholder_replacer = re.compile("{(.*?)}")
+
+    @staticmethod
+    def parse(string: str, variables: dict) -> str:
+        """Parsing f-string"""
+        placeholders = re.findall(utils.placeholder_replacer, string)
+
+        for placeholder in placeholders:
+            string = utils.reverse_replace(
+                string.replace(f"{{{placeholder}}}", variables[placeholder]).replace(
+                    'f"', "", 1
+                ),
+                '"',
+                "",
+                1,
+            )
+        return string
 
 
 class game:
+    """A class to processing game's all event."""
+
     server_running = True
 
     @staticmethod
     def command_interpreter(prompt: str) -> None:
+        """a basic command interpreter."""
         while True:
             try:
                 commands.execute(SYSTEM_NAME, str(input(prompt)))
             except NameError as err:
                 logger.error(
-                    eval(utils.get_message("game.command_interpreter.name_error", 0))
+                    utils.parse(
+                        utils.get_message("game.command_interpreter.name_error", 0), vars()
+                    )
                 )
             except TypeError as err:
                 logger.error(
-                    eval(utils.get_message("game.command_interpreter.type_error", 0))
+                    utils.parse(
+                        utils.get_message("game.command_interpreter.type_error", 0), vars()
+                    )
                 )
             except SyntaxError as err:
                 logger.error(
-                    eval(utils.get_message("game.command_interpreter.syntax_error", 0))
+                    utils.parse(
+                        utils.get_message("game.command_interpreter.syntax_error", 0), vars()
+                    )
                 )
             except KeyboardInterrupt:
                 game.stop()
             except SystemExit:
                 logger.info(
-                    eval(utils.get_message("game.command_interpreter.server_stop", 0))
+                    utils.parse(
+                        utils.get_message("game.command_interpreter.server_stop", 0), vars()
+                    )
                 )
                 os._exit(0)
             except EOFError:
                 logger.error(
-                    eval(utils.get_message("game.command_interpreter.eof_error", 0))
-                )
-            except Exception as err:
-                logger.error(
-                    eval(
-                        utils.get_message(
-                            "game.command_interpreter.unhandled_exception", 0
-                        )
+                    utils.parse(
+                        utils.get_message("game.command_interpreter.eof_error", 0), vars()
                     )
                 )
-                logger.exception(err)
 
     @staticmethod
     def stop(exit_value=0):
-        logger.info(eval(utils.get_message("game.command_interpreter.server_stop", 0)))
+        """Stop server normally."""
+        logger.info(
+            utils.parse(utils.get_message("game.command_interpreter.server_stop", 0), vars())
+        )
         os._exit(exit_value)
 
     @staticmethod
     def error_stop(error_level=-1):
-        logger.error(eval(utils.get_message("game.command_interpreter.error_stop", 0)))
+        """Stop server when error."""
+        logger.error(
+            utils.parse(utils.get_message("game.command_interpreter.error_stop", 0), vars())
+        )
         os._exit(error_level)
 
 
 class network:
+    """A large class, includes http server and websocket server."""
+
     accept_players = 0
 
     # TODO-working: 优化HTTP服务器性能
     class HTTPServer(threading.Thread):
+        """A basic http server allows [GET, POST, and HEAD] request."""
+
         class ResponseBuilder:
+            """Response message builder."""
+
             def __init__(self):
                 self.headers = []
                 self.status = None
                 self.content = None
 
-            def add_header(self, headerKey, headerValue) -> None:
-                head = f"{headerKey}: {headerValue}"
+            def add_header(self, header_key, header_value) -> None:
+                """Add a head to the headers."""
+                head = f"{header_key}: {header_value}"
                 self.headers.append(head)
                 logger.debug(
-                    eval(utils.get_message("network.http_server.set_header", 0))
+                    utils.parse(utils.get_message("network.http_server.set_header", 0), vars())
                 )
 
-            def set_status(self, statusCode, statusMessage) -> None:
-                self.status = f"HTTP/1.1 {statusCode} {statusMessage}"
+            def set_status(self, status_code, status_message) -> None:
+                """Setting HTTP reply status."""
+                self.status = f"HTTP/1.1 {status_code} {status_message}"
                 logger.debug(
-                    eval(utils.get_message("network.http_server.set_status", 0))
+                    utils.parse(utils.get_message("network.http_server.set_status", 0), vars())
                 )
 
             def set_content(self, content) -> None:
+                """Set reply content."""
                 if isinstance(content, (bytes, bytearray)):
                     self.content = content
                     logger.debug(
-                        eval(
+                        utils.parse(
                             utils.get_message(
                                 "network.http_server.set_string_content", 0
-                            )
+                            ), vars()
                         )
                     )
 
                 else:
                     self.content = content.encode("utf-8")
                     logger.debug(
-                        eval(utils.get_message("network.http_server.set_content", 0))
+                        utils.parse(
+                            utils.get_message("network.http_server.set_content", 0), vars()
+                        )
                     )
 
             def build(self) -> bytes:
+                """Building response text."""
                 response = f"{self.status}\r\n"
                 for i in self.headers:
                     response += i + "\r\n"
                 response = f"{response}\n\n".encode("utf-8") + self.content
                 logger.debug(
-                    eval(utils.get_message("network.http_server.reply_build", 0))
+                    utils.parse(utils.get_message("network.http_server.reply_build", 0), vars())
                 )
                 return response
 
         def __init__(self, host, port):
             threading.Thread.__init__(self)
-            logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
+            logger.debug(
+                utils.parse(utils.get_message("network.http_server.listening", 0), vars())
+            )
             self.host = host
             self.port = port
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         def run(self) -> typing.NoReturn:
+            """Start HTTP server"""
             self.setup_socket()
             self.accept()
 
         def setup_socket(self) -> None:
+            """Install&init socket object."""
             self.sock.bind((self.host, self.port))
             self.sock.listen(int(utils.query_config("LISTENS_COUNT")))
             self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
             self.sock.setblocking(True)
 
         def accept_request(self, client_sock, client_addr) -> None:
-            logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
+            """processing response and send it."""
+            logger.debug(
+                utils.parse(utils.get_message("network.http_server.connect", 0), vars())
+            )
             data = b""
             while True:
                 try:
                     _data = client_sock.recv(1024, socket.MSG_WAITALL)
-                except Exception as conn_err:
+                except socket.error as conn_err:
                     logger.error(
-                        eval(utils.get_message("network.http_server.recv_error", 0))
+                        utils.parse(
+                            utils.get_message("network.http_server.recv_error", 0), vars()
+                        )
                     )
                     logger.exception(conn_err)
-                    return
+                    return None
                 if not _data:
                     break
                 data += _data
@@ -233,17 +332,21 @@ class network:
             response = self.process_response(req)
             if not response:
                 logger.warning(
-                    eval(utils.get_message("network.http_server.recv_no_msg", 0))
+                    utils.parse(utils.get_message("network.http_server.recv_no_msg", 0), vars())
                 )
-                return
+                return None
             client_sock.sendall(response)
-            logger.debug(eval(utils.get_message("network.http_server.send_back", 0)))
+            logger.debug(
+                utils.parse(utils.get_message("network.http_server.send_back", 0), vars())
+            )
             # clean up
-            logger.debug(eval(utils.get_message("network.http_server.full", 0)))
+            logger.debug(utils.parse(utils.get_message("network.http_server.full", 0), vars()))
             client_sock.shutdown(socket.SHUT_WR)
             client_sock.close()
+            return None
 
         def accept(self) -> typing.NoReturn:
+            """accepting request forever."""
             while True:
                 (client, address) = self.sock.accept()
                 threading.Thread(
@@ -251,21 +354,24 @@ class network:
                 ).start()
 
         def process_response(self, request) -> bytes:
+            """Processing response text."""
             logger.debug(
-                eval(utils.get_message("network.http_server.process_response", 0))
+                utils.parse(
+                    utils.get_message("network.http_server.process_response", 0), vars()
+                )
             )
             formatted_data = request.strip().split("\n")
             request_words = formatted_data[0].split()
 
             if len(request_words) == 0:
-                return b''
+                return b""
 
             requested_file = request_words[1][1:]
             if request_words[0] == "GET":
                 return self.get_request(requested_file, formatted_data)
-            elif request_words[0] == "POST":
+            if request_words[0] == "POST":
                 return self.post_request(requested_file, formatted_data)
-            elif request_words[0] == "HEAD":
+            if request_words[0] == "HEAD":
                 return self.head_request(requested_file, formatted_data)
             return self.method_not_allowed()
 
@@ -285,17 +391,21 @@ class network:
 
         def should_return_binary(self, filename) -> bool:
             """Check file is binary"""
-            logger.debug(eval(utils.get_message("network.http_server.check_binary", 0)))
+            logger.debug(
+                utils.parse(utils.get_message("network.http_server.check_binary", 0), vars())
+            )
             with open(filename, "rb") as file:
                 logger.debug(
-                    eval(utils.get_message("network.http_server.file_contents", 0))
+                    utils.parse(
+                        utils.get_message("network.http_server.file_contents", 0), vars()
+                    )
                 )
                 return self._check_binary(file.read())
 
         def get_file_binary_contents(self, filename) -> bytes:
             """Get (binary) file content."""
             logger.debug(
-                eval(utils.get_message("network.http_server.file_contents", 0))
+                utils.parse(utils.get_message("network.http_server.file_contents", 0), vars())
             )
             with open(filename, "rb", encoding="utf-8") as file:
                 return file.read()
@@ -303,7 +413,7 @@ class network:
         def get_file_contents(self, filename) -> str:
             """Get (plaintext) file content."""
             logger.debug(
-                eval(utils.get_message("network.http_server.file_contents", 0))
+                utils.parse(utils.get_message("network.http_server.file_contents", 0), vars())
             )
             with open(filename, "r", encoding="utf-8") as file:
                 return file.read()
@@ -314,27 +424,39 @@ class network:
                 requested_file = "index.html"
             if not os.path.exists(requested_file):
                 return self.resource_not_found()
-            elif not self.has_permission_other(requested_file):
+            if not self.has_permission_other(requested_file):
                 return self.resource_forbidden()
+            builder = self.ResponseBuilder()
+
+            if self.should_return_binary(requested_file):
+                builder.set_content(self.get_file_binary_contents(requested_file))
             else:
-                builder = self.ResponseBuilder()
+                builder.set_content(self.get_file_contents(requested_file))
 
-                if self.should_return_binary(requested_file):
-                    builder.set_content(self.get_file_binary_contents(requested_file))
-                else:
-                    builder.set_content(self.get_file_contents(requested_file))
+            builder.set_status("200", "OK")
 
-                builder.set_status("200", "OK")
+            builder.add_header("Connection", "close")
+            builder.add_header(
+                "Content-Type",
+                mime_types["." + requested_file.split(".")[-1]] + "; charset=utf8",
+            )
+            builder.add_header("Connection", "close")
+            builder.add_header(
+                "Date",
+                time.strftime(
+                    "%a, %d %b %Y %H:%M:%S GMT",
+                    time.localtime(os.path.getctime(requested_file)),
+                ),
+            )
+            builder.add_header(
+                "Last-Modified",
+                time.strftime(
+                    "%a, %d %b %Y %H:%M:%S GMT",
+                    time.localtime(os.path.getmtime(requested_file)),
+                ),
+            )
 
-                builder.add_header("Connection", "close")
-                builder.add_header(
-                    "Content-Type", mime_types["." + requested_file.split(".")[-1]]+"; charset=utf8"
-                )
-                builder.add_header("Connection", "close")
-                builder.add_header("Date", time.strftime('%a, %d %b %Y %H:%M:%S GMT',time.localtime(os.path.getctime(requested_file))))
-                builder.add_header("Last-Modified", time.strftime('%a, %d %b %Y %H:%M:%S GMT',time.localtime(os.path.getmtime(requested_file))))
-
-                return builder.build()
+            return builder.build()
 
         def method_not_allowed(self) -> bytes:
             """
@@ -370,6 +492,7 @@ class network:
             return builder.build()
 
         def post_request(self, requested_file, data) -> bytes:
+            """Processing POST request."""
             builder = self.ResponseBuilder()
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
@@ -380,6 +503,7 @@ class network:
             return builder.build()
 
         def head_request(self, requested_file, data):
+            """Processing HEAD request."""
             builder = self.ResponseBuilder()
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
@@ -390,28 +514,29 @@ class network:
 
     @staticmethod
     async def ws_server(websocket, path):
+        """Websocket server."""
         # 采用JSON式
         # 将新连接的客户端添加到clients集合中
         async for message in websocket:
-            logger.debug(eval(utils.get_message("network.ws_server.recived", 0)))
+            logger.debug(utils.parse(utils.get_message("network.ws_server.recived", 0), vars()))
             try:
                 data: dict = json.loads(str(message.replace("'", '"')), strict=False)
-            except:
+            except json.JSONDecodeError:
                 logger.warning(
-                    eval(utils.get_message("network.ws_server.json_decode_error", 0))
+                    utils.parse(
+                        utils.get_message("network.ws_server.json_decode_error", 0), vars()
+                    )
                 )
                 continue
             else:
                 if data.get("type") is None or data.get("content") is None:
                     logger.warning(
-                        logger.warning(
-                            eval(
+                            utils.parse(
                                 utils.get_message(
                                     "network.ws_server.json_missing_keyword", 0
-                                )
+                                ),vars()
                             )
                         )
-                    )
                     continue
             # 在前端接收数据包并显示
             if data["type"] == "send":
@@ -454,21 +579,27 @@ class network:
                                 }
                             )
                             logger.info(
-                                eval(utils.get_message("network.player.send", 0))
+                                utils.parse(utils.get_message("network.player.send", 0), vars())
                             )
                     else:
                         logger.info(
-                            eval(utils.get_message("network.player.anonymous_send", 0))
+                            utils.parse(
+                                utils.get_message("network.player.anonymous_send", 0), vars()
+                            )
                         )
                         continue
             elif data["type"] == "login":
                 if data["content"] in utils.get_players():
                     logger.warning(
-                        eval(utils.get_message("network.player.duplicate_login", 0))
+                        utils.parse(
+                            utils.get_message("network.player.duplicate_login", 0), vars()
+                        )
                     )
                     commands.kick(data["content"])
                 if data["content"] in banlist:
-                    logger.info(eval(utils.get_message("network.player.banned", 0)))
+                    logger.info(
+                        utils.parse(utils.get_message("network.player.banned", 0), vars())
+                    )
                     await websocket.close()
                     continue
                 if len(players) != 0:  # asyncio.wait doesn't accept an empty list
@@ -476,18 +607,20 @@ class network:
                         {"type": "login", "content": data["content"]}
                     )  # content是名字
                     utils.login_player(data["content"], websocket)
-                    logger.info(eval(utils.get_message("network.player.login", 0)))
+                    logger.info(
+                        utils.parse(utils.get_message("network.player.login", 0), vars())
+                    )
             elif data["type"] == "logout":
                 if len(players) != 0:  # asyncio.wait doesn't accept an empty list
                     message = json.dumps({"type": "logout", "content": data["content"]})
                     utils.delete_player(data["content"])
-                    logger.info(eval(utils.get_message("network.logout", 0)))
+                    logger.info(utils.parse(utils.get_message("network.logout", 0), vars()))
                     continue
             elif data["type"] == "paint":
                 if len(players) != 0:
                     message = json.dumps({"type": "paint", "content": data["content"]})
                     logger.info(
-                        eval(utils.get_message("network.player.update_paint", 0))
+                        utils.parse(utils.get_message("network.player.update_paint", 0), vars())
                     )
             elif data["type"] == "heartbeat":
                 if len(players) != 0:
@@ -496,16 +629,18 @@ class network:
                     )
                     utils.get_player(data["content"]).last_heartbeat = time.time()
                     logger.debug(
-                        eval(utils.get_message("network.player.keep_alive", 0))
+                        utils.parse(utils.get_message("network.player.keep_alive", 0), vars())
                     )
                     continue
             elif data["type"] == "ready":
                 network.accept_players += 1
                 if network.accept_players == len(players) >= MIN_PLAYERS:
                     message = json.dumps({"type": "start", "content": "game_start"})
-                    logger.info(eval(utils.get_message("game.game_start", 0)))
+                    logger.info(utils.parse(utils.get_message("game.game_start", 0), vars()))
                 else:
-                    logger.info(eval(utils.get_message("network.player.ready", 0)))
+                    logger.info(
+                        utils.parse(utils.get_message("network.player.ready", 0), vars())
+                    )
                     message = json.dumps({"type": "ready", "content": data["content"]})
             with suppress(Exception):
                 await asyncio.wait(
@@ -513,14 +648,19 @@ class network:
                 )
 
     @staticmethod
-    def run_server():
+    def run_ws_server():
+        """Run websocket server."""
         asyncio.set_event_loop(asyncio.new_event_loop())
-        start_server = websockets.serve(network.ws_server, "0.0.0.0", WS_PORT)
+        start_server = websockets.serve(
+            network.ws_server, "0.0.0.0", int(utils.query_config("WS_PORT"))
+        )
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
 
 
 class commands:
+    """All the commands over here."""
+
     class _CommandNotFoundError(Exception):
         def __init__(self, message):
             self.message = message
@@ -556,6 +696,7 @@ class commands:
         "quit": "stop",
         "halt": "stop",
         "shutdown": "stop",
+        "list": "player_list",
     }
     async_commands = [
         "kick",
@@ -563,115 +704,154 @@ class commands:
     ]
 
     @staticmethod
-    def execute(executer, command):
+    def execute(executer, command) -> typing.Union[str, None]:
+        """Check access and parse, run commands."""
         if not command.strip():
-            return 0
+            return None
         if executer == SYSTEM_NAME:
-            players_access = accesses.get("server")
+            players_access: int = accesses.get("server")
         else:
-            players_access = utils.get_player(executer).access
-        compiled = command.split(" ")  # 以第一个参数为主命令，空格为参数
+            players_access: int = utils.get_player(executer).access
+        compiled: list = command.split(" ")  # 以第一个参数为主命令，空格为参数
         try:
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
-            logger.debug(eval(utils.get_message("commands.run_compiled", 0)))
+            logger.debug(
+                utils.parse(utils.get_message("command.run_compiled", 0), vars())
+            )
             if compiled[0] not in commands.command_access:
+                if compiled[0] in commands.alias:
+                    raise commands._RedirectToAlias(
+                        f"Command {compiled[0]} is defined in alias."
+                    )
                 raise commands._CommandNotFoundError(
                     f"Command {compiled[0]} not found."
                 )
-            else:
-                if players_access >= commands.command_access[compiled[0]]:
-                    logger.info(eval(utils.get_message("command.execute", 0)))
-                    value = eval(run_compiled)
-                    return value
-                else:
-                    logger.warning(
-                        eval(utils.get_message("command.execute.access_denied", 0))
-                    )  # 权限不足
-                    return -1
+            if players_access >= commands.command_access[compiled[0]]:
+                logger.info(
+                    utils.parse(utils.get_message("command.execute", 0), vars())
+                )
+                return eval(run_compiled)
+            out = utils.parse(
+                utils.get_message("command.execute.access_denied", 0), vars()
+            )
+            logger.warning(out)  # 权限不足
+            return out
         except commands._CommandNotFoundError:
             if (
                 commands.command_access.get(compiled[0]) is None
                 and commands.alias.get(compiled[0]) is None
             ):
                 if command != "":
-                    logger.error(
-                        eval(utils.get_message("command.execute.not_found", 0))
+                    out = utils.parse(
+                        utils.get_message("command.execute.not_found", 0), vars()
                     )
-                    detect = process.extractOne(
+                    logger.error(out)
+                    detect: tuple = process.extractOne(
                         command, list(commands.command_access.keys())
                     )
                     if detect[1] >= 85:
-                        logger.info(
-                            eval(utils.get_message("command.execute.syntax_detect", 0))
+                        out += utils.parse(
+                            utils.get_message("command.execute.syntax_detect", 0),
+                            vars(),
                         )
-                return -2
+                        logger.info(
+                            utils.parse(
+                                utils.get_message("command.execute.syntax_detect", 0),
+                                vars()
+                            )
+                        )
+                    return out
+                try:
+                    return out
+                except NameError:
+                    return None
         except commands._RedirectToAlias:
-            compiled[0] = commands.alias.get(compiled[0])
+            compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
-                logger.info(eval(utils.get_message("command.execute", 0)))
-                compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
-                logger.debug(eval(utils.get_message("commands.compiled", 0)))
-
-            else:
-                logger.warning(
-                    eval(utils.get_message("command.execute.access_denied", 0))
-                )  # 权限不足
-                return -1
+                logger.info(
+                    utils.parse(utils.get_message("command.alias_execute", 0), vars())
+                )
+                run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
+                logger.debug(
+                    utils.parse(utils.get_message("command.run_compiled", 0), vars())
+                )
+                return eval(run_compiled)
+            out = utils.parse(
+                utils.get_message("command.execute.access_denied", 0), vars()
+            )
+            logger.warning(out)  # 权限不足
+            return out
+        return out
 
     @staticmethod
     async def kick(player_name):
+        """Kick a player."""
         if player_name in utils.get_players():
-            logger.info(eval(utils.get_message("command.kick", 0)))
+            logger.info(utils.parse(utils.get_message("command.kick", 0), vars()))
             await utils.get_player(player_name).websocket.close()
             utils.delete_player(player_name)
             return 0
-        logger.warning(eval(utils.get_message("command.kick.player_not_found", -3)))
+        logger.warning(
+            utils.parse(utils.get_message("command.kick.player_not_found", -3), vars())
+        )
         return -3
 
     @staticmethod
-    def stop(delay=0):
+    def stop(delay=0) -> str:
+        """Stop game server."""
         if delay > 4294967:  # 它是固定的值吗..?
-            logger.error(eval(utils.get_message("command.stop.delay_too_large", 0)))
-            return 0
-        elif delay > 0:
-            logger.info(eval(utils.get_message("command.stop.delay_stop", 0)))
+            out = utils.parse(
+                utils.get_message("command.stop.delay_too_large", 0), vars())
+            logger.error(out)
+            return out
+        if delay > 0:
+            out = utils.parse(utils.get_message("command.stop.delay_stop", 0), vars())
+            logger.info(out)
         elif delay < 0:
-            logger.error(eval(utils.get_message("command.stop.smaller_zero", 0)))
+            out = utils.parse(utils.get_message("command.stop.smaller_zero", 0), vars())
+            logger.error(out)
         elif delay == 0:
-            logger.info(eval(utils.get_message("command.stop", 0)))
+            out = utils.parse(utils.get_message("command.stop", 0), vars())
+            logger.info(out)
         threading.Thread(
             target=lambda: exec(
                 f"time.sleep({delay})\ngame.stop()\ngame.server_running=False"
             )
         ).start()
-        return 0
+        return out
 
     @staticmethod
-    def modify_access(command, new_access):
+    def modify_access(command, new_access) -> str:
+        """Modify command access."""
         if new_access > 5:
-            logger.error(eval(utils.get_message("command.modify_access", 1)))
-            return -1
-        elif new_access < 1:
-            logger.error(eval(utils.get_message("command.modify_access", 1.5)))
-            return -1.5
+            out = utils.parse(utils.get_message("command.modify_access", 1), vars())
+            logger.error(out)
+            return out
+        if new_access < 1:
+            out = utils.parse(utils.get_message("command.modify_access", 1.5), vars())
+            logger.error(out)
+            return out
         commands.command_access[command] = new_access
-        logger.warning(eval(utils.get_message("command.modify_access", 0)))
-        return 0
+        out = utils.parse(utils.get_message("command.modify_access", 0), vars())
+        logger.warning(out)
+        return out
 
     @staticmethod
-    def get_commands():
+    def get_commands() -> str:
+        """Get command list."""
         commands_list = [
             method
             for method in dir(commands)
             if not method.startswith("_") and callable(getattr(commands, method))
         ]
-        out = eval(utils.get_message("command.get_commands", 0))
-        logger.info(eval(utils.get_message("command.get_commands", 0)))
+        out = utils.parse(utils.get_message("command.get_commands", 0), vars())
+        logger.info(out)
         return out
 
     @staticmethod
-    def clean_logs(folder_path="./logs/"):
-        out = eval(utils.get_message("command.clean_logs", 0))
+    def clean_logs(folder_path="./logs/") -> str:
+        """Remove all logs."""
+        out = utils.parse(utils.get_message("command.clean_logs", 0), vars())
         logger.info(out)
         for filename in os.listdir(folder_path):
             file_path = os.path.join(folder_path, filename)  # 获取文件路径
@@ -679,106 +859,123 @@ class commands:
                 try:
                     os.remove(file_path)  # 删除文件
                 except PermissionError:
-                    logger.warning(eval(utils.get_message("command.clean_logs", -1)))
+                    logger.warning(
+                        utils.parse(utils.get_message("command.clean_logs", -1), vars())
+                    )
         return out
 
     @staticmethod
-    def list():
+    def player_list() -> str:
+        """Get player's list."""
         lists = utils.get_players()
-        out = eval(utils.get_message("command.list", 0))
+        out = utils.parse(utils.get_message("command.list", 0), vars())
         logger.info(out)
         return out
 
     @staticmethod
-    def player_access(player_name, access_):
+    def player_access(player_name, access_) -> str:
+        """Change player's access."""
         if player_name in utils.get_players():
             new_access = accesses.get(access_)
             if new_access is None:
-                out = eval(utils.get_message("command.player_access", -3))
+                out = utils.parse(utils.get_message("command.player_access", -3), vars())
                 logger.warning(out)
                 return out
-            else:
-                out = eval(utils.get_message("command.player_access", 0))
-                logger.info(out)
-                utils.get_player(player_name).access = new_access
-                return out
-        out = eval(utils.get_message("command.player_access", -3.5))
+            out = utils.parse(utils.get_message("command.player_access", 0), vars())
+            logger.info(out)
+            utils.get_player(player_name).access = new_access
+            return out
+        out = utils.parse(utils.get_message("command.player_access", -3.5), vars())
         return out
 
     @staticmethod
-    def new_alias(command, alias):
+    def new_alias(command, alias) -> str:
+        """Add a alias."""
         if (
             commands.alias.get(alias) is not None
             or commands.command_access.get(alias) is not None
         ):
-            out = eval(utils.get_message("command.new_alias", -2))
+            out = utils.parse(utils.get_message("command.new_alias", -2), vars())
             logger.info(out)
             return out
-        else:
-            out = eval(utils.get_message("command.new_alias", 0))
-            logger.info(out)
-            commands.alias[alias] = command
-            return out
+        out = utils.parse(utils.get_message("command.new_alias", 0), vars())
+        logger.info(out)
+        commands.alias[alias] = command
+        return out
 
     @staticmethod
-    def del_alias(alias):
+    def del_alias(alias) -> str:
+        """Remove a alias."""
         if commands.alias.get(alias) is None:
-            out = eval(utils.get_message("command.del_alias", -2))
+            out = utils.parse(utils.get_message("command.del_alias", -2), vars())
             logger.info(out)
             return out
-        else:
-            out = eval(utils.get_message("command.del_alias", 0))
-            logger.info(out)
-            del commands.alias[alias]
-            return out
+        out = utils.parse(utils.get_message("command.del_alias", 0), vars())
+        logger.info(out)
+        del commands.alias[alias]
+        return out
 
     @staticmethod
-    def get_alias():
+    def get_alias() -> str:
+        """Get alias's list."""
         all_alias = list(commands.alias.keys())
-        out = eval(utils.get_message("command.get_alias", 0))
+        out = utils.parse(utils.get_message("command.get_alias", 0), vars())
         logger.info(out)
         return out
 
     @staticmethod
     def ban(player_name):
+        """Ban a player, it never join the game."""
         if not player_name:
-            out = eval(utils.get_message("command.ban", -3))
+            out = utils.parse(utils.get_message("command.ban", -3), vars())
             logger.warning(out)
             return out
         if player_name not in utils.get_players():
-            logger.warning(eval(utils.get_message("command.kick", -3)))
+            logger.warning(utils.parse(utils.get_message("command.kick", -3), vars()))
         if player_name in banlist:
-            logger.error(eval(utils.get_message("network.player.duplicate_ban", 0)))
-            return
+            out = utils.parse(utils.get_message("network.player.duplicate_ban", 0), vars())
+            logger.error(out)
+            return out
         with open("banlist.txt", "a", encoding="utf-8") as ban_file:
             ban_file.write(player_name + "\n")
         banlist.append(player_name)
         commands.kick(player)
-        logger.info(eval(utils.get_message("command.ban", 0)))
+        out = utils.parse(utils.get_message("command.ban", 0), vars())
+        logger.info(out)
+        return out
 
     @staticmethod
     def unban(player_name):
+        """Unban a player."""
         if not player_name:
-            logger.warning(eval(utils.get_message("command.unban", -3)))
-            return
+            out = utils.parse(utils.get_message("command.unban", -3), vars())
+            logger.warning(out)
+            return out
         if player_name not in banlist:
-            logger.warning(eval(utils.get_message("network.player.never_ban", 0)))
-            return
+            out = utils.parse(utils.get_message("network.player.never_ban", 0), vars())
+            logger.warning(out)
+            return out
         with open("banlist.txt", "r", encoding="utf-8") as file:
             lines = file.readlines()
         with open("banlist.txt", "w", encoding="utf-8") as write_file:
-            for line in lines:
-                if line.strip() != player_name:
-                    write_file.write(line)
+            for file_line in lines:
+                if file_line.strip() != player_name:
+                    write_file.write(file_line)
         banlist.remove(player_name)
-        logger.info(eval(utils.get_message("command.unban", 0)))
+        out = utils.parse(utils.get_message("command.unban", 0), vars())
+        logger.info(out)
+        return out
 
     @staticmethod
     def banlist():
-        logger.info(eval(utils.get_message("command.banlist", 0)))
+        """Get banned player's list."""
+        out = utils.parse(utils.get_message("command.banlist", 0), vars())
+        logger.info(out)
+        return out
 
     @staticmethod
     async def say(message):
+        """Say a message to websocket server."""
         await asyncio.wait(
             [
                 user.send(
@@ -791,21 +988,30 @@ class commands:
         )
 
 
+config = {}
+
+try:
+    with open("./config/config.cfg", "r", encoding="utf-8") as f:
+        for line in f.readlines():
+            config_dict = line.split(" = ")
+            config[config_dict[0]] = config_dict[1]
+except FileNotFoundError:
+    if not os.path.exists("./config/"):
+        os.mkdir("./config/")
+    with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
+        f.write("HTTP_TIMEOUT = 60\nLISTENS_COUNT = 8")
+
 lang = {}
 COMMENTING = False
 try:
-    LANGUAGE_LOAD_ERROR_FLAG = False
-    LANGUAGE = arg[2]
-except:
-    LANGUAGE_LOAD_ERROR_FLAG = True
-    LANGUAGE = "zh_cn"
-try:
-    with open("./lang/" + LANGUAGE + ".lang", "r", encoding="utf-8") as f:
+    with open(
+        "./lang/" + utils.query_config("LANGUAGE") + ".lang", "r", encoding="utf-8"
+    ) as f:
         readlines = f.readlines()
         if "No Replace" not in readlines[0]:
-            replace_punctuations = eval("{" + readlines[0] + "}")
+            replace_punctuations: dict = eval("{" + readlines[0] + "}")
         else:
-            replace_punctuations = {}
+            replace_punctuations: dict = {}
         for langs in readlines[1:]:
             if COMMENTING:
                 continue
@@ -821,7 +1027,7 @@ try:
             tmp = langs.rsplit("#", 2)[0].split(
                 ",", 2
             )  # [0]: 命令 [1]: 返回值 [2]: 语言内容 [3]: 注释
-            if tmp == [""] or []:
+            if tmp == [""]:
                 continue
 
             for punctuations in replace_punctuations.keys():
@@ -834,25 +1040,8 @@ except FileNotFoundError:
         os.mkdir("./lang/")
     logger.critical("语言文件不存在. ")
     os._exit(0)
-if LANGUAGE_LOAD_ERROR_FLAG:
-    logger.warning(eval(utils.get_message("root.unchoosed_lang", 0)))
-try:
-    WS_PORT = arg[1]
-except:
-    logger.warning(eval(utils.get_message("root.unchoosed_port", 0)))
-    WS_PORT = 3827
-try:
-    HTTP_PORT = arg[4]
-except:
-    HTTP_PORT = 3872
-    logger.warning(eval(utils.get_message("root.unchoosed_http_port", 0)))
-try:
-    SYSTEM_NAME = arg[3]
-except:
-    logger.warning(eval(utils.get_message("root.unchoosed_system_name", 0)))
-    SYSTEM_NAME = "Server"
 
-logger.debug(eval(utils.get_message("root.loaded_language", 0)))
+logger.debug(utils.parse(utils.get_message("root.loaded_language", 0), vars()))
 
 try:
     for plugin in os.listdir("./plugins/"):
@@ -860,24 +1049,15 @@ try:
             try:
                 exec(f.read())
             except Exception as e:
-                logger.error(eval(utils.get_message("plugin.load_error", 0)))
+                logger.error(utils.parse(utils.get_message("plugin.load_error", 0), vars()))
                 logger.exception(e)
                 game.error_stop()
-        logger.debug(eval(utils.get_message("root.loaded", 0)))
+        logger.debug(utils.parse(utils.get_message("root.loaded", 0), vars()))
 except FileNotFoundError:
     if not os.path.exists("./plugins/"):
         os.mkdir("./plugins/")
-logger.debug(eval(utils.get_message("root.loaded_plugins", 0)))
-try:
-    with open("./config/default_prompt.txt", "r", encoding="utf-8") as f:
-        PROMPT = f.read().strip() + " "
-except FileNotFoundError:
-    if not os.path.exists("./config/"):
-        os.mkdir("./config/")
-    with open("./config/default_prompt.txt", "w", encoding="utf-8") as f:
-        PROMPT = ">>> "
-        f.write(PROMPT)
-logger.debug(eval(utils.get_message("root.loaded_prompt", 0)))
+logger.debug(utils.parse(utils.get_message("root.loaded_plugins", 0), vars()))
+
 try:
     with open("banlist.txt", "r", encoding="utf-8") as f:
         banlist = [ban.strip() for ban in f.readlines()]
@@ -886,41 +1066,37 @@ except FileNotFoundError:
         banlist = []
         f.write("")
 
-logger.debug(eval(utils.get_message("root.loaded_bans", 0)))
-config = {}
-try:
-    with open("./config/config.cfg", "r", encoding="utf-8") as f:
-        for line in f.readlines():
-            config_dict = line.split(" = ")
-            config[config_dict[0]] = config_dict[1]
-except FileNotFoundError:
-    if not os.path.exists("./config/"):
-        os.mkdir("./config/")
-    with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
-        f.write("HTTP_TIMEOUT = 60\nLISTENS_COUNT = 8")
-        HTTP_TIMEOUT = 60
-        LISTENS_COUNT = 8
-# TODO: 配置文档化所有的参数
+logger.debug(utils.parse(utils.get_message("root.loaded_bans", 0), vars()))
 
-def run(enabled_shell=True):
+with suppress(Exception):
+    del COMMENTING
+    del tmp
+    del plugin
+
+SYSTEM_NAME = utils.query_config("SYSTEM_NAME")
+
+
+def run(enabled_shell=True, override_sys_excepthook=True):
+    """Run all server."""
     try:
-        threading.Thread(target=network.run_server).start()
+        threading.Thread(target=network.run_ws_server).start()
     except RuntimeError:
-        logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
+        logger.critical(utils.parse(utils.get_message("root.ws_network_run_error", 0), vars()))
         game.error_stop()
     try:
         network.HTTPServer("0.0.0.0", int(utils.query_config("HTTP_PORT"))).start()
     except RuntimeError:
-        logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
+        logger.critical(utils.parse(utils.get_message("root.ws_network_run_error", 0), vars()))
         game.error_stop()
+    if override_sys_excepthook:
+        sys.excepthook = utils.override_excepthook
     if enabled_shell:
         try:
-            game.command_interpreter(PROMPT)
+            game.command_interpreter(utils.query_config("PROMPT") + " ")
         except KeyboardInterrupt:
             game.stop()
 
 
 if __name__ == "__main__":
-    if ALLOW_PRINT:
-        print(eval(utils.get_message("game.command_interpreter.start_info", 0)))
+    print(utils.parse(utils.get_message("game.command_interpreter.start_info", 0), vars()))
     run()
