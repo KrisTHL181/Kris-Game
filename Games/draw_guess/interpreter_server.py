@@ -117,7 +117,8 @@ class utils:
             utils.parse(
                 utils.get_message(
                     "Game.command_interpreter.unhandled_critical_exception", 0
-                ), vars()
+                ),
+                vars(),
             )
         )
         logger.exception(err_traceback)
@@ -175,19 +176,22 @@ class game:
             except NameError as err:
                 logger.error(
                     utils.parse(
-                        utils.get_message("game.command_interpreter.name_error", 0), vars()
+                        utils.get_message("game.command_interpreter.name_error", 0),
+                        vars(),
                     )
                 )
             except TypeError as err:
                 logger.error(
                     utils.parse(
-                        utils.get_message("game.command_interpreter.type_error", 0), vars()
+                        utils.get_message("game.command_interpreter.type_error", 0),
+                        vars(),
                     )
                 )
             except SyntaxError as err:
                 logger.error(
                     utils.parse(
-                        utils.get_message("game.command_interpreter.syntax_error", 0), vars()
+                        utils.get_message("game.command_interpreter.syntax_error", 0),
+                        vars(),
                     )
                 )
             except KeyboardInterrupt:
@@ -195,14 +199,16 @@ class game:
             except SystemExit:
                 logger.info(
                     utils.parse(
-                        utils.get_message("game.command_interpreter.server_stop", 0), vars()
+                        utils.get_message("game.command_interpreter.server_stop", 0),
+                        vars(),
                     )
                 )
                 os._exit(0)
             except EOFError:
                 logger.error(
                     utils.parse(
-                        utils.get_message("game.command_interpreter.eof_error", 0), vars()
+                        utils.get_message("game.command_interpreter.eof_error", 0),
+                        vars(),
                     )
                 )
 
@@ -210,7 +216,9 @@ class game:
     def stop(exit_value=0):
         """Stop server normally."""
         logger.info(
-            utils.parse(utils.get_message("game.command_interpreter.server_stop", 0), vars())
+            utils.parse(
+                utils.get_message("game.command_interpreter.server_stop", 0), vars()
+            )
         )
         os._exit(exit_value)
 
@@ -218,7 +226,9 @@ class game:
     def error_stop(error_level=-1):
         """Stop server when error."""
         logger.error(
-            utils.parse(utils.get_message("game.command_interpreter.error_stop", 0), vars())
+            utils.parse(
+                utils.get_message("game.command_interpreter.error_stop", 0), vars()
+            )
         )
         os._exit(error_level)
 
@@ -245,14 +255,18 @@ class network:
                 head = f"{header_key}: {header_value}"
                 self.headers.append(head)
                 logger.debug(
-                    utils.parse(utils.get_message("network.http_server.set_header", 0), vars())
+                    utils.parse(
+                        utils.get_message("network.http_server.set_header", 0), vars()
+                    )
                 )
 
             def set_status(self, status_code, status_message) -> None:
                 """Setting HTTP reply status."""
                 self.status = f"HTTP/1.1 {status_code} {status_message}"
                 logger.debug(
-                    utils.parse(utils.get_message("network.http_server.set_status", 0), vars())
+                    utils.parse(
+                        utils.get_message("network.http_server.set_status", 0), vars()
+                    )
                 )
 
             def set_content(self, content) -> None:
@@ -263,7 +277,8 @@ class network:
                         utils.parse(
                             utils.get_message(
                                 "network.http_server.set_string_content", 0
-                            ), vars()
+                            ),
+                            vars(),
                         )
                     )
 
@@ -271,7 +286,8 @@ class network:
                     self.content = content.encode("utf-8")
                     logger.debug(
                         utils.parse(
-                            utils.get_message("network.http_server.set_content", 0), vars()
+                            utils.get_message("network.http_server.set_content", 0),
+                            vars(),
                         )
                     )
 
@@ -282,14 +298,18 @@ class network:
                     response += i + "\r\n"
                 response = f"{response}\n\n".encode("utf-8") + self.content
                 logger.debug(
-                    utils.parse(utils.get_message("network.http_server.reply_build", 0), vars())
+                    utils.parse(
+                        utils.get_message("network.http_server.reply_build", 0), vars()
+                    )
                 )
                 return response
 
         def __init__(self, host, port):
             threading.Thread.__init__(self)
             logger.debug(
-                utils.parse(utils.get_message("network.http_server.listening", 0), vars())
+                utils.parse(
+                    utils.get_message("network.http_server.listening", 0), vars()
+                )
             )
             self.host = host
             self.port = port
@@ -319,7 +339,8 @@ class network:
                 except socket.error as conn_err:
                     logger.error(
                         utils.parse(
-                            utils.get_message("network.http_server.recv_error", 0), vars()
+                            utils.get_message("network.http_server.recv_error", 0),
+                            vars(),
                         )
                     )
                     logger.exception(conn_err)
@@ -332,15 +353,21 @@ class network:
             response = self.process_response(req)
             if not response:
                 logger.warning(
-                    utils.parse(utils.get_message("network.http_server.recv_no_msg", 0), vars())
+                    utils.parse(
+                        utils.get_message("network.http_server.recv_no_msg", 0), vars()
+                    )
                 )
                 return None
             client_sock.sendall(response)
             logger.debug(
-                utils.parse(utils.get_message("network.http_server.send_back", 0), vars())
+                utils.parse(
+                    utils.get_message("network.http_server.send_back", 0), vars()
+                )
             )
             # clean up
-            logger.debug(utils.parse(utils.get_message("network.http_server.full", 0), vars()))
+            logger.debug(
+                utils.parse(utils.get_message("network.http_server.full", 0), vars())
+            )
             client_sock.shutdown(socket.SHUT_WR)
             client_sock.close()
             return None
@@ -392,12 +419,15 @@ class network:
         def should_return_binary(self, filename) -> bool:
             """Check file is binary"""
             logger.debug(
-                utils.parse(utils.get_message("network.http_server.check_binary", 0), vars())
+                utils.parse(
+                    utils.get_message("network.http_server.check_binary", 0), vars()
+                )
             )
             with open(filename, "rb") as file:
                 logger.debug(
                     utils.parse(
-                        utils.get_message("network.http_server.file_contents", 0), vars()
+                        utils.get_message("network.http_server.file_contents", 0),
+                        vars(),
                     )
                 )
                 return self._check_binary(file.read())
@@ -405,7 +435,9 @@ class network:
         def get_file_binary_contents(self, filename) -> bytes:
             """Get (binary) file content."""
             logger.debug(
-                utils.parse(utils.get_message("network.http_server.file_contents", 0), vars())
+                utils.parse(
+                    utils.get_message("network.http_server.file_contents", 0), vars()
+                )
             )
             with open(filename, "rb", encoding="utf-8") as file:
                 return file.read()
@@ -413,7 +445,9 @@ class network:
         def get_file_contents(self, filename) -> str:
             """Get (plaintext) file content."""
             logger.debug(
-                utils.parse(utils.get_message("network.http_server.file_contents", 0), vars())
+                utils.parse(
+                    utils.get_message("network.http_server.file_contents", 0), vars()
+                )
             )
             with open(filename, "r", encoding="utf-8") as file:
                 return file.read()
@@ -518,25 +552,29 @@ class network:
         # 采用JSON式
         # 将新连接的客户端添加到clients集合中
         async for message in websocket:
-            logger.debug(utils.parse(utils.get_message("network.ws_server.recived", 0), vars()))
+            logger.debug(
+                utils.parse(utils.get_message("network.ws_server.recived", 0), vars())
+            )
             try:
                 data: dict = json.loads(str(message.replace("'", '"')), strict=False)
             except json.JSONDecodeError:
                 logger.warning(
                     utils.parse(
-                        utils.get_message("network.ws_server.json_decode_error", 0), vars()
+                        utils.get_message("network.ws_server.json_decode_error", 0),
+                        vars(),
                     )
                 )
                 continue
             else:
                 if data.get("type") is None or data.get("content") is None:
                     logger.warning(
-                            utils.parse(
-                                utils.get_message(
-                                    "network.ws_server.json_missing_keyword", 0
-                                ),vars()
-                            )
+                        utils.parse(
+                            utils.get_message(
+                                "network.ws_server.json_missing_keyword", 0
+                            ),
+                            vars(),
                         )
+                    )
                     continue
             # 在前端接收数据包并显示
             if data["type"] == "send":
@@ -579,12 +617,15 @@ class network:
                                 }
                             )
                             logger.info(
-                                utils.parse(utils.get_message("network.player.send", 0), vars())
+                                utils.parse(
+                                    utils.get_message("network.player.send", 0), vars()
+                                )
                             )
                     else:
                         logger.info(
                             utils.parse(
-                                utils.get_message("network.player.anonymous_send", 0), vars()
+                                utils.get_message("network.player.anonymous_send", 0),
+                                vars(),
                             )
                         )
                         continue
@@ -592,13 +633,16 @@ class network:
                 if data["content"] in utils.get_players():
                     logger.warning(
                         utils.parse(
-                            utils.get_message("network.player.duplicate_login", 0), vars()
+                            utils.get_message("network.player.duplicate_login", 0),
+                            vars(),
                         )
                     )
                     commands.kick(data["content"])
                 if data["content"] in banlist:
                     logger.info(
-                        utils.parse(utils.get_message("network.player.banned", 0), vars())
+                        utils.parse(
+                            utils.get_message("network.player.banned", 0), vars()
+                        )
                     )
                     await websocket.close()
                     continue
@@ -608,19 +652,25 @@ class network:
                     )  # content是名字
                     utils.login_player(data["content"], websocket)
                     logger.info(
-                        utils.parse(utils.get_message("network.player.login", 0), vars())
+                        utils.parse(
+                            utils.get_message("network.player.login", 0), vars()
+                        )
                     )
             elif data["type"] == "logout":
                 if len(players) != 0:  # asyncio.wait doesn't accept an empty list
                     message = json.dumps({"type": "logout", "content": data["content"]})
                     utils.delete_player(data["content"])
-                    logger.info(utils.parse(utils.get_message("network.logout", 0), vars()))
+                    logger.info(
+                        utils.parse(utils.get_message("network.logout", 0), vars())
+                    )
                     continue
             elif data["type"] == "paint":
                 if len(players) != 0:
                     message = json.dumps({"type": "paint", "content": data["content"]})
                     logger.info(
-                        utils.parse(utils.get_message("network.player.update_paint", 0), vars())
+                        utils.parse(
+                            utils.get_message("network.player.update_paint", 0), vars()
+                        )
                     )
             elif data["type"] == "heartbeat":
                 if len(players) != 0:
@@ -629,17 +679,23 @@ class network:
                     )
                     utils.get_player(data["content"]).last_heartbeat = time.time()
                     logger.debug(
-                        utils.parse(utils.get_message("network.player.keep_alive", 0), vars())
+                        utils.parse(
+                            utils.get_message("network.player.keep_alive", 0), vars()
+                        )
                     )
                     continue
             elif data["type"] == "ready":
                 network.accept_players += 1
                 if network.accept_players == len(players) >= MIN_PLAYERS:
                     message = json.dumps({"type": "start", "content": "game_start"})
-                    logger.info(utils.parse(utils.get_message("game.game_start", 0), vars()))
+                    logger.info(
+                        utils.parse(utils.get_message("game.game_start", 0), vars())
+                    )
                 else:
                     logger.info(
-                        utils.parse(utils.get_message("network.player.ready", 0), vars())
+                        utils.parse(
+                            utils.get_message("network.player.ready", 0), vars()
+                        )
                     )
                     message = json.dumps({"type": "ready", "content": data["content"]})
             with suppress(Exception):
@@ -757,7 +813,7 @@ class commands:
                         logger.info(
                             utils.parse(
                                 utils.get_message("command.execute.syntax_detect", 0),
-                                vars()
+                                vars(),
                             )
                         )
                     return out
@@ -801,7 +857,8 @@ class commands:
         """Stop game server."""
         if delay > 4294967:  # 它是固定的值吗..?
             out = utils.parse(
-                utils.get_message("command.stop.delay_too_large", 0), vars())
+                utils.get_message("command.stop.delay_too_large", 0), vars()
+            )
             logger.error(out)
             return out
         if delay > 0:
@@ -878,7 +935,9 @@ class commands:
         if player_name in utils.get_players():
             new_access = accesses.get(access_)
             if new_access is None:
-                out = utils.parse(utils.get_message("command.player_access", -3), vars())
+                out = utils.parse(
+                    utils.get_message("command.player_access", -3), vars()
+                )
                 logger.warning(out)
                 return out
             out = utils.parse(utils.get_message("command.player_access", 0), vars())
@@ -933,7 +992,9 @@ class commands:
         if player_name not in utils.get_players():
             logger.warning(utils.parse(utils.get_message("command.kick", -3), vars()))
         if player_name in banlist:
-            out = utils.parse(utils.get_message("network.player.duplicate_ban", 0), vars())
+            out = utils.parse(
+                utils.get_message("network.player.duplicate_ban", 0), vars()
+            )
             logger.error(out)
             return out
         with open("banlist.txt", "a", encoding="utf-8") as ban_file:
@@ -1049,7 +1110,9 @@ try:
             try:
                 exec(f.read())
             except Exception as e:
-                logger.error(utils.parse(utils.get_message("plugin.load_error", 0), vars()))
+                logger.error(
+                    utils.parse(utils.get_message("plugin.load_error", 0), vars())
+                )
                 logger.exception(e)
                 game.error_stop()
         logger.debug(utils.parse(utils.get_message("root.loaded", 0), vars()))
@@ -1081,12 +1144,16 @@ def run(enabled_shell=True, override_sys_excepthook=True):
     try:
         threading.Thread(target=network.run_ws_server).start()
     except RuntimeError:
-        logger.critical(utils.parse(utils.get_message("root.ws_network_run_error", 0), vars()))
+        logger.critical(
+            utils.parse(utils.get_message("root.ws_network_run_error", 0), vars())
+        )
         game.error_stop()
     try:
         network.HTTPServer("0.0.0.0", int(utils.query_config("HTTP_PORT"))).start()
     except RuntimeError:
-        logger.critical(utils.parse(utils.get_message("root.ws_network_run_error", 0), vars()))
+        logger.critical(
+            utils.parse(utils.get_message("root.ws_network_run_error", 0), vars())
+        )
         game.error_stop()
     if override_sys_excepthook:
         sys.excepthook = utils.override_excepthook
@@ -1098,6 +1165,7 @@ def run(enabled_shell=True, override_sys_excepthook=True):
 
 
 if __name__ == "__main__":
-    print(utils.parse(utils.get_message("game.command_interpreter.start_info", 0), vars()))
+    print(
+        utils.parse(utils.get_message("game.command_interpreter.start_info", 0), vars())
+    )
     run()
-
