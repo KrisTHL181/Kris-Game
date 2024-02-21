@@ -74,7 +74,7 @@ class utils:
     def get_player(name) -> player:
         """Get player object by name"""
         if name == SYSTEM_NAME:
-            return player(SYSTEM_NAME, None, accesses.get("server"))
+            return player(SYSTEM_NAME, None, accesses["server"])
         return [iter_player for iter_player in players if iter_player.name == name][0]
 
     @staticmethod
@@ -757,6 +757,7 @@ class commands:
     async_commands = [
         "kick",
         "say",
+        "ban",
     ]
 
     @staticmethod
@@ -765,7 +766,7 @@ class commands:
         if not command.strip():
             return None
         if executer == SYSTEM_NAME:
-            players_access: int = accesses.get("server")
+            players_access: int = accesses["server"]
         else:
             players_access: int = utils.get_player(executer).access
         compiled: list = command.split(" ")  # 以第一个参数为主命令，空格为参数
@@ -983,7 +984,7 @@ class commands:
         return out
 
     @staticmethod
-    def ban(player_name):
+    async def ban(player_name):
         """Ban a player, it never join the game."""
         if not player_name:
             out = utils.parse(utils.get_message("command.ban", -3), vars())
@@ -1000,7 +1001,7 @@ class commands:
         with open("banlist.txt", "a", encoding="utf-8") as ban_file:
             ban_file.write(player_name + "\n")
         banlist.append(player_name)
-        commands.kick(player)
+        await commands.kick(player)
         out = utils.parse(utils.get_message("command.ban", 0), vars())
         logger.info(out)
         return out
