@@ -1100,3 +1100,4 @@ def run(enabled_shell=True, override_sys_excepthook=True):
 if __name__ == "__main__":
     print(utils.parse(utils.get_message("game.command_interpreter.start_info", 0), vars()))
     run()
+
