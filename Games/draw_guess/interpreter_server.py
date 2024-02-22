@@ -164,10 +164,16 @@ class utils:
 
     @staticmethod
     def get_param_type(function: typing.Callable) -> list:
-        types: list=[]
+        """Get required type of parameter."""
+        types: list = []
         for param in inspect.signature(function).parameters.items():
             types.append(param[1].annotation)
         return types
+
+    @staticmethod
+    def get_param_count(function: typing.Callable) -> int:
+        """Get required count of parameter."""
+        return len(inspect.signature(function).parameters.items())
 
 
 class game:
