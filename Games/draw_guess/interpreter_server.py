@@ -784,6 +784,12 @@ class commands:
         else:
             players_access: int = utils.get_player(executer).access
         compiled: list = command.split(" ")  # 以第一个参数为主命令，空格为参数
+        param_count = utils.get_param_count(getattr(commands, compiled[0]))
+        if param_count > 0:
+            param_types=utils.get_param_type(getattr(commands, compiled[0]))
+            for index, parsing_type in enumerate(compiled):
+                # Finished-TODO: 自动参数解析
+                compiled[index] = param_types[index](parsing_type)
         try:
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
             logger.debug(
