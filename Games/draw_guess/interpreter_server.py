@@ -14,6 +14,7 @@ import sys
 import functools
 import re
 import ast
+import inspect
 from fuzzywuzzy import process
 from colorama import init, Fore
 from loguru import logger
@@ -51,6 +52,7 @@ class player:
 
 
 players = []
+
 
 class utils:
     """A class to encapsulates codes"""
@@ -123,7 +125,7 @@ class utils:
         logger.exception(err_traceback)
 
     @staticmethod
-    def reverse_replace(string: str, old: str, new: str, max_count: int=-1) -> str:
+    def reverse_replace(string: str, old: str, new: str, max_count: int = -1) -> str:
         """Reverse string and replace string"""
         # 从后往前查找旧字符串
         reversed_string = string[::-1]
@@ -161,6 +163,11 @@ class utils:
         return string
 
     @staticmethod
+    def get_param_type(function: typing.Callable) -> list:
+        types: list=[]
+        for param in inspect.signature(function).parameters.items():
+            types.append(param[1].annotation)
+        return types
 
 
 class game:
@@ -214,7 +221,7 @@ class game:
                 )
 
     @staticmethod
-    def stop(exit_value: int=0) -> typing.NoReturn:
+    def stop(exit_value: int = 0) -> typing.NoReturn:
         """Stop server normally."""
         logger.info(
             utils.parse(
@@ -224,7 +231,7 @@ class game:
         os._exit(exit_value)
 
     @staticmethod
-    def error_stop(error_level: int=-1) -> typing.NoReturn:
+    def error_stop(error_level: int = -1) -> typing.NoReturn:
         """Stop server when error."""
         logger.error(
             utils.parse(
@@ -788,7 +795,7 @@ class commands:
                 logger.info(
                     utils.parse(utils.get_message("command.execute", 0), vars())
                 )
-                return getattr(commands,run_compiled[0])(*run_compiled[1:])
+                return getattr(commands, run_compiled[0])(*run_compiled[1:])
             out = utils.parse(
                 utils.get_message("command.execute.access_denied", 0), vars()
             )
@@ -833,7 +840,7 @@ class commands:
                 logger.debug(
                     utils.parse(utils.get_message("command.run_compiled", 0), vars())
                 )
-                return getattr(commands,run_compiled[0])(*run_compiled[1:])
+                return getattr(commands, run_compiled[0])(*run_compiled[1:])
             out = utils.parse(
                 utils.get_message("command.execute.access_denied", 0), vars()
             )
@@ -845,19 +852,19 @@ class commands:
     async def kick(player_name: str) -> str:
         """Kick a player."""
         if player_name in utils.get_players():
-            out=utils.parse(utils.get_message("command.kick", 0), vars())
+            out = utils.parse(utils.get_message("command.kick", 0), vars())
             logger.info(out)
             await utils.get_player(player_name).websocket.close()
             utils.delete_player(player_name)
             return out
-        out=utils.parse(utils.get_message("command.kick.player_not_found", -3), vars())
-        logger.warning(
-            out
+        out = utils.parse(
+            utils.get_message("command.kick.player_not_found", -3), vars()
         )
+        logger.warning(out)
         return out
 
     @staticmethod
-    def stop(delay: int=0) -> str:
+    def stop(delay: int = 0) -> str:
         """Stop game server."""
         if delay > 4294967:  # 它是固定的值吗..?
             out = utils.parse(
@@ -910,7 +917,7 @@ class commands:
         return out
 
     @staticmethod
-    def clean_logs(folder_path: str="./logs/") -> str:
+    def clean_logs(folder_path: str = "./logs/") -> str:
         """Remove all logs."""
         out = utils.parse(utils.get_message("command.clean_logs", 0), vars())
         logger.info(out)
