@@ -15,6 +15,7 @@ import functools
 import re
 import ast
 import inspect
+from rich.traceback import install_rich_traceback
 from fuzzywuzzy import process
 from colorama import init, Fore
 from loguru import logger
@@ -112,19 +113,6 @@ class utils:
             return utils.parse(utils.get_message("root.config_not_found", 0), vars())
 
     @staticmethod
-    def override_excepthook(err_type, err_value, err_traceback):
-        """better sys.excepthook."""
-        logger.critical(
-            utils.parse(
-                utils.get_message(
-                    "Game.command_interpreter.unhandled_critical_exception", 0
-                ),
-                vars(),
-            )
-        )
-        logger.exception(err_traceback)
-
-    @staticmethod
     def reverse_replace(string: str, old: str, new: str, max_count: int = -1) -> str:
         """Reverse string and replace string"""
         # 从后往前查找旧字符串
@@ -152,14 +140,10 @@ class utils:
         placeholders = re.findall(utils.placeholder_replacer, string)
 
         for placeholder in placeholders:
-            string = utils.reverse_replace(
-                string.replace(f"{{{placeholder}}}", variables[placeholder]).replace(
-                    'f"', "", 1
-                ),
-                '"',
-                "",
-                1,
-            )
+            string = string.replace('f"', "", 1)
+            string = utils.reverse_replace(string, '"', "", 1)
+            variable = variables.get(placeholder)
+            string = string.replace(f"{{{placeholder}}}", str(variable))  # 替换fstring
         return string
 
     @staticmethod
@@ -786,7 +770,7 @@ class commands:
         compiled: list = command.split(" ")  # 以第一个参数为主命令，空格为参数
         param_count = utils.get_param_count(getattr(commands, compiled[0]))
         if param_count > 0:
-            param_types=utils.get_param_type(getattr(commands, compiled[0]))
+            param_types = utils.get_param_type(getattr(commands, compiled[0]))
             for index, parsing_type in enumerate(compiled):
                 # Finished-TODO: 自动参数解析
                 compiled[index] = param_types[index](parsing_type)
@@ -1179,7 +1163,7 @@ def run(enabled_shell=True, override_sys_excepthook=True):
         )
         game.error_stop()
     if override_sys_excepthook:
-        sys.excepthook = utils.override_excepthook
+        install_rich_traceback(showlocal=True)
     if enabled_shell:
         try:
             game.command_interpreter(utils.query_config("PROMPT") + " ")
@@ -1188,6 +1172,7 @@ def run(enabled_shell=True, override_sys_excepthook=True):
 
 
 if __name__ == "__main__":
+    #TODO: Fix parse
     print(
         utils.parse(utils.get_message("game.command_interpreter.start_info", 0), vars())
     )
