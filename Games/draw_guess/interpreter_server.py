@@ -239,7 +239,7 @@ class network:
 
     accept_players = 0
 
-    # TODO-working: 优化HTTP服务器性能
+    # TODO: 权衡几次，究竟用nginx还是自己的这个
     class HTTPServer(threading.Thread):
         """A basic http server allows [GET, POST, and HEAD] request."""
 
@@ -316,13 +316,17 @@ class network:
             self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
             self.sock.setblocking(True)
 
-        def accept_request(self, client_sock, client_addr: tuple) -> None:
+        def accept_request(
+            self, client_sock: socket.socket, client_addr: tuple
+        ) -> None:
             """processing response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
             data = b""
             while True:
                 try:
-                    _data = client_sock.recv(1024, socket.MSG_WAITALL)
+                    _data = client_sock.recv(1024)
+                except socket.timeout:
+                    break
                 except socket.error as conn_err:
                     logger.error(
                         eval(
@@ -441,7 +445,6 @@ class network:
                 "Content-Type",
                 mime_types["." + requested_file.split(".")[-1]] + "; charset=utf8",
             )
-            builder.add_header("Connection", "close")
             builder.add_header(
                 "Date",
                 time.strftime(
@@ -651,6 +654,7 @@ class network:
         )
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
+
 
 class commands:
     """All the commands over here."""
