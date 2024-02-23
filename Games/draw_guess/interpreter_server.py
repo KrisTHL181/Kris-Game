@@ -187,7 +187,7 @@ class game:
         while True:
             try:
                 commands.execute(utils.query_config("SYSTEM_NAME"), str(input(prompt)))
-            except AttributeError as err:
+            except NameError as err:
                 logger.error(
                     eval(
                         utils.get_message("game.command_interpreter.name_error", 0),
@@ -729,6 +729,14 @@ class commands:
         else:
             players_access: int = utils.get_player(executer).access
         compiled: list = command.split(" ")  # 以第一个参数为主命令，空格为参数
+        if compiled[0] not in commands.command_access:
+            if compiled[0] in commands.alias:
+                raise commands._RedirectToAlias(
+                    f"Command {compiled[0]} is defined in alias."
+                )
+            raise commands._CommandNotFoundError(
+                f"Command {compiled[0]} not found."
+            )
         param_count = utils.get_param_count(getattr(commands, compiled[0]))
         if param_count > 0:
             param_types = utils.get_param_type(getattr(commands, compiled[0]))
@@ -737,14 +745,6 @@ class commands:
         try:
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))
-            if compiled[0] not in commands.command_access:
-                if compiled[0] in commands.alias:
-                    raise commands._RedirectToAlias(
-                        f"Command {compiled[0]} is defined in alias."
-                    )
-                raise commands._CommandNotFoundError(
-                    f"Command {compiled[0]} not found."
-                )
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
                 return getattr(commands, run_compiled[0])(*run_compiled[1:])
@@ -1106,6 +1106,5 @@ def run(enabled_shell=True, override_sys_excepthook=True):
 
 
 if __name__ == "__main__":
-    # TODO: Fix parse
     print(eval(utils.get_message("game.command_interpreter.start_info", 0)))
     run()
