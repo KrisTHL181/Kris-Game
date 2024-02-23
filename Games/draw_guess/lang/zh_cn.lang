@@ -1,4 +1,5 @@
 "%comma%":"," # 替换字符串
+root.run,0,f"基础服务器已启动%comma% pid={os.getpid()}."
 root.loaded_language,0,f"语言配置文档加载完成."
 root.loaded_prompt,0,f"默认提示符加载完成."
 root.loaded_bans,0,f"封禁列表加载完成."

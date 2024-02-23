@@ -224,17 +224,13 @@ class game:
     @staticmethod
     def stop(exit_value: int = 0) -> typing.NoReturn:
         """Stop server normally."""
-        logger.info(
-            eval(utils.get_message("game.command_interpreter.server_stop", 0))
-        )
+        logger.info(eval(utils.get_message("game.command_interpreter.server_stop", 0)))
         os._exit(exit_value)
 
     @staticmethod
     def error_stop(error_level: int = -1) -> typing.NoReturn:
         """Stop server when error."""
-        logger.error(
-            eval(utils.get_message("game.command_interpreter.error_stop", 0))
-        )
+        logger.error(eval(utils.get_message("game.command_interpreter.error_stop", 0)))
         os._exit(error_level)
 
 
@@ -303,9 +299,7 @@ class network:
 
         def __init__(self, host, port):
             threading.Thread.__init__(self)
-            logger.debug(
-                eval(utils.get_message("network.http_server.listening", 0))
-            )
+            logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
             self.host = host
             self.port = port
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -324,9 +318,7 @@ class network:
 
         def accept_request(self, client_sock, client_addr: tuple) -> None:
             """processing response and send it."""
-            logger.debug(
-                eval(utils.get_message("network.http_server.connect", 0))
-            )
+            logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
             data = b""
             while True:
                 try:
@@ -351,9 +343,7 @@ class network:
                 )
                 return None
             client_sock.sendall(response)
-            logger.debug(
-                eval(utils.get_message("network.http_server.send_back", 0))
-            )
+            logger.debug(eval(utils.get_message("network.http_server.send_back", 0)))
             # clean up
             logger.debug(eval(utils.get_message("network.http_server.full", 0)))
             client_sock.shutdown(socket.SHUT_WR)
@@ -371,9 +361,7 @@ class network:
         def process_response(self, request: str) -> bytes:
             """Processing response text."""
             logger.debug(
-                eval(
-                    utils.get_message("network.http_server.process_response", 0)
-                )
+                eval(utils.get_message("network.http_server.process_response", 0))
             )
             formatted_data = request.strip().split("\n")
             request_words = formatted_data[0].split()
@@ -406,9 +394,7 @@ class network:
 
         def should_return_binary(self, filename: str) -> bool:
             """Check file is binary"""
-            logger.debug(
-                eval(utils.get_message("network.http_server.check_binary", 0))
-            )
+            logger.debug(eval(utils.get_message("network.http_server.check_binary", 0)))
             with open(filename, "rb") as file:
                 logger.debug(
                     eval(
@@ -612,9 +598,7 @@ class network:
                     )
                     await commands.kick(data["content"])
                 if data["content"] in banlist:
-                    logger.info(
-                        eval(utils.get_message("network.player.banned", 0))
-                    )
+                    logger.info(eval(utils.get_message("network.player.banned", 0)))
                     await websocket.close()
                     continue
                 if len(players) != 0:  # asyncio.wait doesn't accept an empty list
@@ -622,9 +606,7 @@ class network:
                         {"type": "login", "content": data["content"]}
                     )  # content是名字
                     utils.login_player(data["content"], websocket)
-                    logger.info(
-                        eval(utils.get_message("network.player.login", 0))
-                    )
+                    logger.info(eval(utils.get_message("network.player.login", 0)))
             elif data["type"] == "logout":
                 if len(players) != 0:  # asyncio.wait doesn't accept an empty list
                     message = json.dumps({"type": "logout", "content": data["content"]})
@@ -653,9 +635,7 @@ class network:
                     message = json.dumps({"type": "start", "content": "game_start"})
                     logger.info(eval(utils.get_message("game.game_start", 0)))
                 else:
-                    logger.info(
-                        eval(utils.get_message("network.player.ready", 0))
-                    )
+                    logger.info(eval(utils.get_message("network.player.ready", 0)))
                     message = json.dumps({"type": "ready", "content": data["content"]})
             with suppress(Exception):
                 await asyncio.wait(
@@ -672,21 +652,20 @@ class network:
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
 
-
 class commands:
     """All the commands over here."""
 
     class _CommandNotFoundError(Exception):
-        def __init__(self, message):
-            self.message = message
+        def __init__(self, *args, **kwargs):
+            pass
 
     class _RedirectToAlias(Exception):  # 其实是个信号 不是Error
-        def __init__(self, message):
-            self.message = message
+        def __init__(self, *args, **kwargs):
+            pass
 
     class _AsyncFunction(Exception):
-        def __init__(self, message):
-            self.message = message
+        def __init__(self, *args, **kwargs):
+            pass
 
     command_access = {
         "execute": 1,  # 执行命令
@@ -734,9 +713,7 @@ class commands:
                 raise commands._RedirectToAlias(
                     f"Command {compiled[0]} is defined in alias."
                 )
-            raise commands._CommandNotFoundError(
-                f"Command {compiled[0]} not found."
-            )
+            raise commands._CommandNotFoundError(f"Command {compiled[0]} not found.")
         param_count = utils.get_param_count(getattr(commands, compiled[0]))
         if param_count > 0:
             param_types = utils.get_param_type(getattr(commands, compiled[0]))
@@ -747,7 +724,7 @@ class commands:
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
-                return getattr(commands, run_compiled[0])(*run_compiled[1:])
+                return getattr(commands, compiled[0])(*compiled[1:])
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
@@ -776,7 +753,7 @@ class commands:
                     return out
                 except NameError:
                     return None
-        except commands._RedirectToAlias:
+        except commands._RedirectToAlias as err:
             compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.alias_execute", 0)))
@@ -786,6 +763,8 @@ class commands:
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
+        except commands._AsyncFunction as err:
+            raise NotImplementedError("Async execute is not implemented.") from err
         return out
 
     @staticmethod
@@ -863,9 +842,7 @@ class commands:
                 try:
                     os.remove(file_path)  # 删除文件
                 except PermissionError:
-                    logger.warning(
-                        eval(utils.get_message("command.clean_logs", -1))
-                    )
+                    logger.warning(eval(utils.get_message("command.clean_logs", -1)))
         return out
 
     @staticmethod
@@ -1086,6 +1063,7 @@ with suppress(Exception):
 
 def run(enabled_shell=True, override_sys_excepthook=True):
     """Run all server."""
+    logger.debug(eval(utils.get_message("root.run", 0)))
     try:
         threading.Thread(target=network.run_ws_server).start()
     except RuntimeError:
