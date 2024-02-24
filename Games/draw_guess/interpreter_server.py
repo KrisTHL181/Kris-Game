@@ -420,7 +420,9 @@ class network:
 
         def get_request(self, requested_file: str, data) -> bytes:
             """Get request messages."""
-            if not requested_file:
+            requested_file = "." + requested_file
+            requested_file = requested_file.split("?", 1)[0]
+            if not requested_file.replace(".","",1):
                 requested_file = "index.html"
             if not os.path.exists(requested_file):
                 return self.resource_not_found()
