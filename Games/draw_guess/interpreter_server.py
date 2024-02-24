@@ -24,7 +24,7 @@ import websockets
 init(autoreset=True)
 logger.remove()
 if __name__ == "__main__":
-    logger.add(sys.stderr, level=0, enqueue=False)  # 命令行句柄
+    logger.add(sys.stderr, level=20, enqueue=True)  # 命令行句柄
 logger.add(
     f"./logs/{time.strftime('%Y.%m.%d.log')}",
     encoding="utf-8",
@@ -420,13 +420,13 @@ class network:
 
         def get_request(self, requested_file: str, data) -> bytes:
             """Get request messages."""
+            if not requested_file.replace(".", "", 1).replace("/", "", 1):
+                requested_file = "index.html"
             requested_file = "./" + requested_file
             requested_file = requested_file.split("?", 1)[0]
             logger.debug(
                 eval(utils.get_message("network.http_server.requested_file", 0))
             )
-            if not requested_file.replace(".", "", 1):
-                requested_file = "index.html"
             if not os.path.exists(requested_file):
                 return self.resource_not_found()
             if not self.has_permission_other(requested_file):
@@ -541,16 +541,13 @@ class network:
                     )
                 )
                 continue
-            else:
-                if data.get("type") is None or data.get("content") is None:
-                    logger.warning(
-                        eval(
-                            utils.get_message(
-                                "network.ws_server.json_missing_keyword", 0
-                            ),
-                        )
+            if data.get("type") is None or data.get("content") is None:
+                logger.warning(
+                    eval(
+                        utils.get_message("network.ws_server.json_missing_keyword", 0),
                     )
-                    continue
+                )
+                continue
             # 在前端接收数据包并显示
             if data["type"] == "send":
                 if len(players) != 0:  # asyncio.wait doesn't accept an empty list
@@ -687,7 +684,7 @@ class commands:
         "modify_access": 4,  # 修改命令权限
         "get_commands": 1,  # 获取命令列表
         "clean_logs": 3,  # 删除所有日志文件
-        "list": 2,  # 获取玩家列表
+        "player_list": 2,  # 获取玩家列表
         "player_access": 3,  # 修改玩家权限
         "new_alias": 3,  # 创建别名
         "del_alias": 3,  # 删除别名
@@ -736,7 +733,10 @@ class commands:
                     or param_types[1][index] is param_types[0].empty
                 ):  # 不用解析typing的子类
                     continue
-                compiled[index] = param_types[index](parsing_type)
+                compiled[index + 1] = param_types[1][index](
+                    parsing_type
+                )  # TODO: Fix ValueError(When Wrong Input)
+            print(compiled)
         try:
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))

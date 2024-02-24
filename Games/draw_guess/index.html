@@ -64,7 +64,7 @@
         }
         game_over = false;
         var name = query("name");
-        var websocket_port = "ws://" + window.location.host + ":" + query("port");
+        var websocket_port = "ws://" + window.location.hostname + ":" + query("port");
         console.log(
             "Login with name: " + name + " on websocket port: " + websocket_port
         );
@@ -235,10 +235,8 @@
         <dialog id="chat-dialog">
             <div id="chat-messages"></div>
             <button type="button" onclick="chatDialog.close()">关闭</button><br />
-            <form onsubmit="sendMessage(); return false;">
-                <input type="text" id="chat-input" placeholder="在此处发送信息..." autocomplete="off" />
-                <button type="submit">发送</button>
-            </form>
+            <input type="text" id="chat-input" placeholder="在此处发送信息..." autocomplete="off" />
+            <button type="submit" onclick="sendMessage()">发送</button>
         </dialog>
         <br />
     </div>
