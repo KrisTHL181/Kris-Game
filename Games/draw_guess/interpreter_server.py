@@ -240,7 +240,6 @@ class network:
 
     accept_players = 0
 
-    # TODO: 权衡几次，究竟用nginx还是自己的这个
     class HTTPServer(threading.Thread):
         """A basic http server allows [GET, POST, and HEAD] request."""
 
@@ -293,9 +292,6 @@ class network:
                 for i in self.headers:
                     response += i + "\r\n"
                 response = f"{response}\n\n".encode("utf-8") + self.content
-                logger.debug(
-                    eval(utils.get_message("network.http_server.reply_build", 0))
-                )
                 return response
 
         def __init__(self, host, port):
@@ -308,6 +304,7 @@ class network:
         def run(self) -> typing.NoReturn:
             """Start HTTP server"""
             self.setup_socket()
+            self.change_dir()
             self.accept()
 
         def setup_socket(self) -> None:
@@ -317,30 +314,27 @@ class network:
             self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
             self.sock.setblocking(True)
 
+        def change_dir(self) -> None:
+            """Change working directory."""
+            os.chdir(utils.query_config("HTTP_PATH"))
+
         def accept_request(
             self, client_sock: socket.socket, client_addr: tuple
         ) -> None:
             """processing response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
-            data = b""
+            buffer = [client_sock.recv(1024)]
+            if buffer[0] in (0, -1):
+                return None
+            client_sock.setblocking(False)
             while True:
                 try:
-                    _data = client_sock.recv(1024)
-                except socket.timeout:
+                    data = client_sock.recv(1024)
+                    buffer.append(data)
+                except BlockingIOError:
                     break
-                except socket.error as conn_err:
-                    logger.error(
-                        eval(
-                            utils.get_message("network.http_server.recv_error", 0),
-                        )
-                    )
-                    logger.exception(conn_err)
-                    return None
-                if not _data:
-                    break
-                data += _data
-            req = data.decode("utf-8")
-
+            client_sock.setblocking(True)
+            req = b"".join(buffer).decode("utf-8")
             response = self.process_response(req)
             if not response:
                 logger.warning(
@@ -413,7 +407,7 @@ class network:
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0))
             )
-            with open(filename, "rb", encoding="utf-8") as file:
+            with open(filename, "rb") as file:
                 return file.read()
 
         def get_file_contents(self, filename: str) -> str:
@@ -444,7 +438,10 @@ class network:
             builder.add_header("Connection", "close")
             builder.add_header(
                 "Content-Type",
-                mime_types["." + requested_file.split(".")[-1]] + "; charset=utf8",
+                mime_types.get(
+                    "." + requested_file.split(".")[-1], "application/octet-stream"
+                )
+                + "; charset=utf8",
             )
             builder.add_header(
                 "Date",
@@ -502,7 +499,10 @@ class network:
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
             builder.add_header(
-                "Content-Type", mime_types[requested_file.rsplit(".")[-1]]
+                "Content-Type",
+                mime_types.get(
+                    requested_file.rsplit(".")[-1], "application/octet-stream"
+                ),
             )
             builder.set_content(self.get_file_contents(requested_file))
             return builder.build()
@@ -513,7 +513,10 @@ class network:
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
             builder.add_header(
-                "Content-Type", mime_types[requested_file.rsplit(".")[-1]]
+                "Content-Type",
+                mime_types.get(
+                    requested_file.rsplit(".")[-1], "application/octet-stream"
+                ),
             )
             return builder.build()
 
@@ -1027,7 +1030,7 @@ try:
 
             for punctuations in replace_punctuations.keys():
                 _loading[2] = _loading[2].replace(
-                    _loading, replace_punctuations.get(punctuations)
+                    punctuations, replace_punctuations.get(punctuations)
                 )
             lang[f"{_loading[0]}.{_loading[1]}"] = _loading[2]
 except FileNotFoundError:
