@@ -163,12 +163,13 @@ class utils:
             return utils.replace_escape_string(string)
 
     @staticmethod
-    def get_param_type(function: typing.Callable) -> list:
+    def get_param_type(function: typing.Callable) -> tuple:
         """Get required type of parameter."""
         types: list = []
-        for param in inspect.signature(function).parameters.items():
+        signature = inspect.signature(function)
+        for param in signature.parameters.items():
             types.append(param[1].annotation)
-        return types
+        return (signature, types)
 
     @staticmethod
     def get_param_count(function: typing.Callable) -> int:
@@ -722,6 +723,11 @@ class commands:
         if param_count > 0:
             param_types = utils.get_param_type(getattr(commands, compiled[0]))
             for index, parsing_type in enumerate(compiled[1:]):
+                if (
+                    hasattr(typing, repr(param_types[1][index]).rsplit(".", 1)[-1])
+                    or param_types[1][index] is param_types[0].empty
+                ):  # 不用解析typing的子类
+                    continue
                 compiled[index] = param_types[index](parsing_type)
         try:
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
@@ -991,7 +997,7 @@ except FileNotFoundError:
         f.write("HTTP_TIMEOUT = 60\nLISTENS_COUNT = 8")
 
 lang = {}
-COMMENTING = False
+_COMMENTING = False
 try:
     with open(
         "./lang/" + utils.query_config("LANGUAGE") + ".lang", "r", encoding="utf-8"
@@ -1002,28 +1008,28 @@ try:
         else:
             replace_punctuations: dict = {}
         for langs in readlines[1:]:
-            if COMMENTING:
+            if _COMMENTING:
                 continue
             if langs.startswith("--Comments: Start"):
-                COMMENTING = True
+                _COMMENTING = True
                 continue
             if langs.startswith("--Comments: End"):
-                COMMENTING = False
+                _COMMENTING = False
                 continue
             if langs.startswith("--"):
-                COMMENTING = False
+                _COMMENTING = False
                 continue
-            tmp = langs.rsplit("#", 2)[0].split(
+            _loading = langs.rsplit("#", 2)[0].split(
                 ",", 2
             )  # [0]: 命令 [1]: 返回值 [2]: 语言内容 [3]: 注释
-            if tmp == [""]:
+            if _loading == [""]:
                 continue
 
             for punctuations in replace_punctuations.keys():
-                tmp[2] = tmp[2].replace(
-                    punctuations, replace_punctuations.get(punctuations)
+                _loading[2] = _loading[2].replace(
+                    _loading, replace_punctuations.get(punctuations)
                 )
-            lang[f"{tmp[0]}.{tmp[1]}"] = tmp[2]
+            lang[f"{_loading[0]}.{_loading[1]}"] = _loading[2]
 except FileNotFoundError:
     if not os.path.exists("./lang/"):
         os.mkdir("./lang/")
@@ -1033,8 +1039,8 @@ except FileNotFoundError:
 logger.debug(eval(utils.get_message("root.loaded_language", 0)))
 
 try:
-    for plugin in os.listdir("./plugins/"):
-        with open("./plugins/" + plugin, "r", encoding="utf-8") as f:
+    for _plugin in os.listdir("./plugins/"):
+        with open("./plugins/" + _plugin, "r", encoding="utf-8") as f:
             try:
                 exec(f.read())
             except Exception as e:
@@ -1056,13 +1062,6 @@ except FileNotFoundError:
         f.write("")
 
 logger.debug(eval(utils.get_message("root.loaded_bans", 0)))
-COMMENTING = None
-tmp = None
-plugin = None
-with suppress(Exception):
-    del COMMENTING
-    del tmp
-    del plugin
 
 
 def run(enabled_shell=True, override_sys_excepthook=True):
