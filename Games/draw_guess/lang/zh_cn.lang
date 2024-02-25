@@ -40,6 +40,7 @@ network.http_server.recv_no_msg,0,f"{client_addr[0]}:{client_addr[1]} 没有发�
 network.http_server.recv_error,0,f"在接收信息的时候发生异常: {conn_err}"
 network.http_server.process_response,0,f"正在处理连接信息: {request}."
 network.http_server.requested_file,0,f"请求的文件: {requested_file}"
+network.https_server.ssl_error,0,f"SSL. 强行使用 HTTP ..."
 network.ws_server.recived,0,f"收到了Websocket信息: {message}"
 network.ws_server.json_decode_error,0,f"Websocket JSON解码失败."
 network.ws_server.json_missing_keyword,0,f"Websocket JSON缺少关键信息."

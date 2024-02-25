@@ -15,6 +15,7 @@ import functools
 import re
 import ast
 import inspect
+import ssl
 from rich.traceback import install as install_rich_traceback
 from fuzzywuzzy import process
 from colorama import init, Fore
@@ -294,12 +295,28 @@ class network:
                 response = f"{response}\n\n".encode("utf-8") + self.content
                 return response
 
-        def __init__(self, host, port):
+        def __init__(self, host, port, using_https=False, cafile=None):
             threading.Thread.__init__(self)
             logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
             self.host = host
             self.port = port
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if using_https:
+                try:
+                    ssl_context = ssl.create_default_context(
+                        ssl.Purpose.SERVER_AUTH, cafile=cafile
+                    )
+                    self.sock = ssl_context.wrap_socket(
+                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                        server_hostname=host,
+                        server_side=True,
+                    )
+                except ssl.SSLError:
+                    logger.warning(
+                        eval(utils.get_message("network.https_server.ssl_error", 0))
+                    )
+                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            else:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         def run(self) -> typing.NoReturn:
             """Start HTTP server"""
@@ -1081,7 +1098,9 @@ def run(enabled_shell=True, override_sys_excepthook=True):
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
     try:
-        network.HTTPServer("0.0.0.0", int(utils.query_config("HTTP_PORT"))).start()
+        network.HTTPServer(
+            "0.0.0.0", int(utils.query_config("HTTP_PORT")), using_https=True
+        ).start()
     except RuntimeError:
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
