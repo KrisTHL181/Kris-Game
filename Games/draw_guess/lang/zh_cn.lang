@@ -58,6 +58,7 @@ network.player.heartbeat_timeout,0,f"'玩家 '{player}' 已经超过 60 秒没�
 network.player.ready,0,f"玩家 '{data['content']}' 准备好了."
 command.run_compiled,0,f"编译后的执行语句: '{run_compiled}'"
 command.execute,0,f"玩家 '{executer}'({utils.get_player(executer).access}) 执行了命令 '{command}'({commands.command_access.get(compiled[0])})"
+command.execute.parse_failed,0,f"{parsing_type} 类型自动解析失败."
 command.alias_execute,0,f"玩家 '{executer}'({utils.get_player(executer).access}) 执行了类型为别名的命令 '{command}'({commands.command_access.get(compiled[0])})"
 command.execute.access_denied,-1,f"权限不足: 玩家 '{utils.get_player(executer).name}'({utils.get_player(executer).access}) 执行了命令 '{command}'({commands.command_access.get(command)})"
 command.clean_logs,0,f"删除所有日志文件从./logs/文件夹." # 清除日志

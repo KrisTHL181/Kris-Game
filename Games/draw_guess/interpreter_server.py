@@ -166,11 +166,10 @@ class utils:
     @staticmethod
     def get_param_type(function: typing.Callable) -> tuple:
         """Get required type of parameter."""
-        types: list = []
-        signature = inspect.signature(function)
-        for param in signature.parameters.items():
-            types.append(param[1].annotation)
-        return (signature, types)
+        return [
+            param[1].annotation
+            for param in inspect.signature(function).parameters.items()
+        ]
 
     @staticmethod
     def get_param_count(function: typing.Callable) -> int:
@@ -302,14 +301,9 @@ class network:
             self.port = port
             if using_https:
                 try:
-                    ssl_context = ssl.create_default_context(
-                        ssl.Purpose.SERVER_AUTH, cafile=cafile
-                    )
-                    self.sock = ssl_context.wrap_socket(
-                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-                        server_hostname=host,
-                        server_side=True,
-                    )
+                    self.sock = ssl.wrap_socket(
+                        socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    )  # 似乎SSL.CreateContext有点问题...? TODO: Remove depressed ssl.wrap_socket
                 except ssl.SSLError:
                     logger.warning(
                         eval(utils.get_message("network.https_server.ssl_error", 0))
@@ -348,7 +342,7 @@ class network:
                 try:
                     data = client_sock.recv(1024)
                     buffer.append(data)
-                except BlockingIOError:
+                except BlockingIOError:  # BlockingIOError: 缓冲区没有剩余的数据
                     break
             client_sock.setblocking(True)
             req = b"".join(buffer).decode("utf-8")
@@ -558,7 +552,7 @@ class network:
                     )
                 )
                 continue
-            if data.get("type") is None or data.get("content") is None:
+            if (data.get("type") is None) or (data.get("content") is None):
                 logger.warning(
                     eval(
                         utils.get_message("network.ws_server.json_missing_keyword", 0),
@@ -656,17 +650,22 @@ class network:
                     )
                     continue
             elif data["type"] == "ready":
-                network.accept_players += 1
-                if network.accept_players == len(players) >= MIN_PLAYERS:
-                    message = json.dumps({"type": "start", "content": "game_start"})
-                    logger.info(eval(utils.get_message("game.game_start", 0)))
-                else:
-                    logger.info(eval(utils.get_message("network.player.ready", 0)))
-                    message = json.dumps({"type": "ready", "content": data["content"]})
-            with suppress(Exception):
+                if len(players) != 0:
+                    network.accept_players += 1
+                    if network.accept_players == len(players) >= MIN_PLAYERS:
+                        message = json.dumps({"type": "start", "content": "game_start"})
+                        logger.info(eval(utils.get_message("game.game_start", 0)))
+                    else:
+                        logger.info(eval(utils.get_message("network.player.ready", 0)))
+                        message = json.dumps(
+                            {"type": "ready", "content": data["content"]}
+                        )
+            try:
                 await asyncio.wait(
                     [user.send(message) for user in utils.get_websockets()]
                 )
+            except ValueError:
+                pass
 
     @staticmethod
     def run_ws_server() -> typing.NoReturn:
@@ -728,33 +727,39 @@ class commands:
     @staticmethod
     def execute(executer: str, command: str) -> typing.Union[str, None]:
         """Check access and parse, run commands."""
-        if not command.strip():
+        command = command.strip()
+        if not command:
             return None
         if executer == utils.query_config("SYSTEM_NAME"):
             players_access: int = accesses["server"]
         else:
             players_access: int = utils.get_player(executer).access
-        compiled: list = command.split(" ")  # 以第一个参数为主命令，空格为参数
-        if compiled[0] not in commands.command_access:
-            if compiled[0] in commands.alias:
-                raise commands._RedirectToAlias(
-                    f"Command {compiled[0]} is defined in alias."
-                )
-            raise commands._CommandNotFoundError(f"Command {compiled[0]} not found.")
-        param_count = utils.get_param_count(getattr(commands, compiled[0]))
-        if param_count > 0:
-            param_types = utils.get_param_type(getattr(commands, compiled[0]))
-            for index, parsing_type in enumerate(compiled[1:]):
-                if (
-                    hasattr(typing, repr(param_types[1][index]).rsplit(".", 1)[-1])
-                    or param_types[1][index] is param_types[0].empty
-                ):  # 不用解析typing的子类
-                    continue
-                compiled[index + 1] = param_types[1][index](
-                    parsing_type
-                )  # TODO: Fix ValueError(When Wrong Input)
-            print(compiled)
+        compiled: list = command.split()  # compiled[0]主命令，compiled[1:]为参数
         try:
+            if compiled[0] not in commands.command_access:
+                if compiled[0] in commands.alias:
+                    raise commands._RedirectToAlias(
+                        f"Command {compiled[0]} is defined in alias."
+                    )
+                raise commands._CommandNotFoundError(
+                    f"Command {compiled[0]} not found."
+                )
+            param_count = utils.get_param_count(getattr(commands, compiled[0]))
+            if param_count > 0:
+                param_types = utils.get_param_type(getattr(commands, compiled[0]))
+                for index, parsing_type in enumerate(compiled[1:]):
+                    if (
+                        hasattr(typing, repr(param_types[1][index]).rsplit(".", 1)[-1])
+                        or param_types[1][index] is param_types[0].empty
+                    ):  # 不用解析typing的子类
+                        continue
+                    try:
+                        compiled[index + 1] = param_types[1][index](parsing_type)
+                    except ValueError:
+                        logger.debug(
+                            eval(utils.get_message("command.execute.parse_failed", 0))
+                        )
+                        continue
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))
             if players_access >= commands.command_access[compiled[0]]:
@@ -788,7 +793,7 @@ class commands:
                     return out
                 except NameError:
                     return None
-        except commands._RedirectToAlias as err:
+        except commands._RedirectToAlias:
             compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.alias_execute", 0)))
