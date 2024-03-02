@@ -386,8 +386,9 @@ class network:
                     self.sock = context.wrap_socket(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
+                        server_hostname=socket.gethostbyname(socket.gethostname())
                     )
-                except ssl.SSLError:
+                except (ssl.SSLError, ValueError):
                     logger.warning(
                         eval(utils.get_message("network.https_server.ssl_error", 0))
                     )
@@ -610,7 +611,7 @@ class network:
             return builder.build()
 
     class HTTP20Server(threading.Thread):
-        """A basic http0.9 server allows [GET, POST, HEAD] request, support all frames."""
+        """A basic http 0.9 server allows [GET, POST, HEAD] request, support all frames."""
 
         def __init__(
             self, host: str, port: int, using_https: bool = False, cafile=None
@@ -627,8 +628,9 @@ class network:
                     self.sock = context.wrap_socket(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
+                        server_hostname=socket.gethostbyname(socket.gethostname())
                     )
-                except ssl.SSLError:
+                except (ssl.SSLError, ValueError):
                     logger.warning(
                         eval(utils.get_message("network.https_server.ssl_error", 0))
                     )
