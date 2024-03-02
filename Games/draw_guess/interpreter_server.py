@@ -240,61 +240,145 @@ class network:
 
     accept_players = 0
 
-    class HTTPServer(threading.Thread):
-        """A basic http server allows [GET, POST, and HEAD] request."""
+    @staticmethod
+    def recv(client_sock: socket.socket) -> list:
+        """Non-Blocking recv socket data."""
+        buffer = [client_sock.recv(1024)]
+        if buffer[0] in (0, -1):
+            return []
+        client_sock.setblocking(False)
+        while True:
+            try:
+                data = client_sock.recv(1024)
+                buffer.append(data)
+            except BlockingIOError:  # BlockingIOError: 缓冲区没有剩余的数据
+                break
+        client_sock.setblocking(True)
+        return buffer
 
-        class ResponseBuilder:
-            """Response message builder."""
+    class ResponseBuilder:
+        """Response message builder."""
+        def __init__(self):
+            self.headers = []
+            self.status = None
+            self.content = None
 
-            def __init__(self):
-                self.headers = []
-                self.status = None
-                self.content = None
+        def add_header(self, header_key: str, header_value: str) -> None:
+            """Add a head to the headers."""
+            head = f"{header_key}: {header_value}"
+            self.headers.append(head)
+            logger.debug(
+                eval(utils.get_message("network.http_server.set_header", 0))
+            )
 
-            def add_header(self, header_key: str, header_value: str) -> None:
-                """Add a head to the headers."""
-                head = f"{header_key}: {header_value}"
-                self.headers.append(head)
+        def set_status(self, status_code: str, status_message: str) -> None:
+            """Setting HTTP reply status."""
+            self.status = f"HTTP/1.1 {status_code} {status_message}"
+            logger.debug(
+                eval(utils.get_message("network.http_server.set_status", 0))
+            )
+
+        def set_content(self, content: typing.Union[str, bytes]) -> None:
+            """Set reply content."""
+            if isinstance(content, (bytes, bytearray)):
+                self.content = content
                 logger.debug(
-                    eval(utils.get_message("network.http_server.set_header", 0))
+                    eval(
+                        utils.get_message(
+                            "network.http_server.set_string_content", 0
+                        ),
+                    )
                 )
 
-            def set_status(self, status_code: str, status_message: str) -> None:
-                """Setting HTTP reply status."""
-                self.status = f"HTTP/1.1 {status_code} {status_message}"
+            else:
+                self.content = content.encode("utf-8")
                 logger.debug(
-                    eval(utils.get_message("network.http_server.set_status", 0))
+                    eval(
+                        utils.get_message("network.http_server.set_content", 0),
+                    )
                 )
 
-            def set_content(self, content: typing.Union[str, bytes]) -> None:
-                """Set reply content."""
-                if isinstance(content, (bytes, bytearray)):
-                    self.content = content
-                    logger.debug(
-                        eval(
-                            utils.get_message(
-                                "network.http_server.set_string_content", 0
-                            ),
-                        )
-                    )
+        def build(self) -> bytes:
+            """Building response text."""
+            response = f"{self.status}\r\n"
+            for i in self.headers:
+                response += i + "\r\n"
+            response = f"{response}\n\n".encode("utf-8") + self.content
+            return response
 
-                else:
-                    self.content = content.encode("utf-8")
-                    logger.debug(
-                        eval(
-                            utils.get_message("network.http_server.set_content", 0),
-                        )
-                    )
+    class HTTP09Server(threading.Thread):
+        """A basic http0.9 server allows [GET] request."""
 
-            def build(self) -> bytes:
-                """Building response text."""
-                response = f"{self.status}\r\n"
-                for i in self.headers:
-                    response += i + "\r\n"
-                response = f"{response}\n\n".encode("utf-8") + self.content
-                return response
+        def __init__(self, host: str, port: int):
+            threading.Thread.__init__(self)
+            logger.debug(eval(utils.get_message("network.http_server09.listening", 0)))
+            self.host = host
+            self.port = port
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        def __init__(self, host, port, using_https=False, cafile=None):
+        def run(self) -> typing.NoReturn:
+            self.setup_socket()
+            self.change_dir()
+            self.accept()
+
+        def setup_socket(self) -> None:
+            """Install&init socket object."""
+            self.sock.bind((self.host, self.port))
+            self.sock.listen(int(utils.query_config("LISTENS_COUNT")))
+            self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
+            self.sock.setblocking(True)
+
+        def accept(self) -> typing.NoReturn:
+            """accepting request forever."""
+            while True:
+                (client, address) = self.sock.accept()
+                threading.Thread(
+                    target=self.accept_request, args=(client, address)
+                ).start()
+
+        def change_dir(self) -> None:
+            """Change working directory."""
+            os.chdir(utils.query_config("HTTP_PATH"))
+
+        def accept_request(
+            self, client_sock: socket.socket, client_addr: tuple
+        ) -> None:
+            """processing response and send it."""
+            logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
+            buffer = network.recv(client_sock)
+            req = b"".join(buffer).decode("utf-8")
+            response = self.process_response(req)
+            if not response:
+                logger.warning(
+                    eval(utils.get_message("network.http_server.recv_no_msg", 0))
+                )
+                return None
+            client_sock.sendall(response)
+            logger.debug(eval(utils.get_message("network.http_server.send_back", 0)))
+            # clean up
+            logger.debug(eval(utils.get_message("network.http_server.full", 0)))
+            client_sock.shutdown(socket.SHUT_WR)
+            client_sock.close()
+            return None
+
+        def process_response(self, request: str) -> bytes:
+            requested_file = request.split()[1]
+            if not requested_file.replace(".", "", 1).replace("/", "", 1):
+                requested_file = "index.html"
+            requested_file = "./" + requested_file
+            requested_file = requested_file.split("?", 1)[0]
+            logger.debug(
+                eval(utils.get_message("network.http_server.requested_file", 0))
+            )
+            with open(requested_file, "r") as file:
+                return file.read().encode("utf-8")
+
+    class HTTP11Server(threading.Thread):
+        """A basic http1.1 server allows [GET, POST, and HEAD] request."""
+
+        def __init__(
+            self, host: str, port: int, using_https: bool = False, cafile=None
+        ):
             threading.Thread.__init__(self)
             logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
             self.host = host
@@ -334,17 +418,7 @@ class network:
         ) -> None:
             """processing response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
-            buffer = [client_sock.recv(1024)]
-            if buffer[0] in (0, -1):
-                return None
-            client_sock.setblocking(False)
-            while True:
-                try:
-                    data = client_sock.recv(1024)
-                    buffer.append(data)
-                except BlockingIOError:  # BlockingIOError: 缓冲区没有剩余的数据
-                    break
-            client_sock.setblocking(True)
+            buffer = network.recv(client_sock)
             req = b"".join(buffer).decode("utf-8")
             response = self.process_response(req)
             if not response:
@@ -442,7 +516,7 @@ class network:
                 return self.resource_not_found()
             if not self.has_permission_other(requested_file):
                 return self.resource_forbidden()
-            builder = self.ResponseBuilder()
+            builder = network.ResponseBuilder()
 
             if self.should_return_binary(requested_file):
                 builder.set_content(self.get_file_binary_contents(requested_file))
@@ -480,7 +554,7 @@ class network:
             """
             Returns 405 not allowed status and gives allowed methods.
             """
-            builder = self.ResponseBuilder()
+            builder = network.ResponseBuilder()
             builder.set_status("405", "METHOD NOT ALLOWED")
             allowed = ", ".join(["GET", "POST"])
             builder.add_header("Allow", allowed)
@@ -491,7 +565,7 @@ class network:
             """
             Returns 404 not found status and sends back our 404.html page.
             """
-            builder = self.ResponseBuilder()
+            builder = network.ResponseBuilder()
             builder.set_status("404", "NOT FOUND")
             builder.add_header("Connection", "close")
             builder.add_header("Content-Type", mime_types[".html"])
@@ -502,7 +576,7 @@ class network:
             """
             Returns 403 FORBIDDEN status and sends back our 403.html page.
             """
-            builder = self.ResponseBuilder()
+            builder = network.ResponseBuilder()
             builder.set_status("403", "FORBIDDEN")
             builder.add_header("Connection", "close")
             builder.add_header("Content-Type", mime_types[".html"])
@@ -511,7 +585,7 @@ class network:
 
         def post_request(self, requested_file: str, data) -> bytes:
             """Processing POST request."""
-            builder = self.ResponseBuilder()
+            builder = network.ResponseBuilder()
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
             builder.add_header(
@@ -525,7 +599,7 @@ class network:
 
         def head_request(self, requested_file: str, data):
             """Processing HEAD request."""
-            builder = self.ResponseBuilder()
+            builder = network.ResponseBuilder()
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
             builder.add_header(
@@ -536,6 +610,9 @@ class network:
             )
             return builder.build()
 
+    class HTTP20Server(threading.Thread):
+        """A basic http0.9 server allows [GET, POST, HEAD] request, support all frames."""
+        def __init__()
     @staticmethod
     async def ws_server(websocket, path) -> typing.NoReturn:
         """Websocket server."""
@@ -725,7 +802,7 @@ class commands:
     ]
 
     @staticmethod
-    def execute(executer: str, command: str) -> typing.Union[str, None]:
+    def execute(executer: str, command: str) -> typing.Optional[str]:
         """Check access and parse, run commands."""
         command = command.strip()
         if not command:
@@ -1103,7 +1180,7 @@ def run(enabled_shell=True, override_sys_excepthook=True):
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
     try:
-        network.HTTPServer(
+        network.HTTP11Server(
             "0.0.0.0", int(utils.query_config("HTTP_PORT")), using_https=True
         ).start()
     except RuntimeError:
