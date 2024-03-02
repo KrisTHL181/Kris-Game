@@ -258,6 +258,7 @@ class network:
 
     class ResponseBuilder:
         """Response message builder."""
+
         def __init__(self):
             self.headers = []
             self.status = None
@@ -267,16 +268,12 @@ class network:
             """Add a head to the headers."""
             head = f"{header_key}: {header_value}"
             self.headers.append(head)
-            logger.debug(
-                eval(utils.get_message("network.http_server.set_header", 0))
-            )
+            logger.debug(eval(utils.get_message("network.http_server.set_header", 0)))
 
         def set_status(self, status_code: str, status_message: str) -> None:
             """Setting HTTP reply status."""
             self.status = f"HTTP/1.1 {status_code} {status_message}"
-            logger.debug(
-                eval(utils.get_message("network.http_server.set_status", 0))
-            )
+            logger.debug(eval(utils.get_message("network.http_server.set_status", 0)))
 
         def set_content(self, content: typing.Union[str, bytes]) -> None:
             """Set reply content."""
@@ -284,9 +281,7 @@ class network:
                 self.content = content
                 logger.debug(
                     eval(
-                        utils.get_message(
-                            "network.http_server.set_string_content", 0
-                        ),
+                        utils.get_message("network.http_server.set_string_content", 0),
                     )
                 )
 
@@ -385,9 +380,13 @@ class network:
             self.port = port
             if using_https:
                 try:
-                    self.sock = ssl.wrap_socket(
-                        socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    )  # 似乎SSL.CreateContext有点问题...? TODO: Remove depressed ssl.wrap_socket
+                    context = ssl.create_default_context(
+                        ssl.Purpose.SERVER_AUTH, cafile=cafile
+                    )
+                    self.sock = context.wrap_socket(
+                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                        server_side=True,
+                    )
                 except ssl.SSLError:
                     logger.warning(
                         eval(utils.get_message("network.https_server.ssl_error", 0))
@@ -612,7 +611,31 @@ class network:
 
     class HTTP20Server(threading.Thread):
         """A basic http0.9 server allows [GET, POST, HEAD] request, support all frames."""
-        def __init__()
+
+        def __init__(
+            self, host: str, port: int, using_https: bool = False, cafile=None
+        ):
+            threading.Thread.__init__(self)
+            logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
+            self.host = host
+            self.port = port
+            if using_https:
+                try:
+                    context = ssl.create_default_context(
+                        ssl.Purpose.SERVER_AUTH, cafile=cafile
+                    )
+                    self.sock = context.wrap_socket(
+                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                        server_side=True,
+                    )
+                except ssl.SSLError:
+                    logger.warning(
+                        eval(utils.get_message("network.https_server.ssl_error", 0))
+                    )
+                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            else:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     @staticmethod
     async def ws_server(websocket, path) -> typing.NoReturn:
         """Websocket server."""
