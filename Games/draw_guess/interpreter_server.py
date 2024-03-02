@@ -386,7 +386,7 @@ class network:
                     self.sock = context.wrap_socket(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
-                        server_hostname=socket.gethostbyname(socket.gethostname())
+                        server_hostname=socket.gethostbyname(socket.gethostname()),
                     )
                 except (ssl.SSLError, ValueError):
                     logger.warning(
@@ -628,7 +628,7 @@ class network:
                     self.sock = context.wrap_socket(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
-                        server_hostname=socket.gethostbyname(socket.gethostname())
+                        server_hostname=socket.gethostbyname(socket.gethostname()),
                     )
                 except (ssl.SSLError, ValueError):
                     logger.warning(
