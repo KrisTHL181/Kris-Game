@@ -3,6 +3,7 @@
 """ A draw&guess game, includes websocket server and http server."""
 from contextlib import suppress
 from mimetypes import types_map as mime_types
+from abc import ABCMeta
 import json
 import time
 import os
@@ -56,7 +57,7 @@ class player:
 players = []
 
 
-class utils:
+class utils(metaclass=ABCMeta):
     """A class to encapsulates codes"""
 
     @staticmethod
@@ -66,7 +67,7 @@ class utils:
         try:
             return str(lang[eqalname + "." + str(value)]).strip()
         except KeyError:
-            return str(lang[("root.unknown_language.0")]).strip()
+            return f"'未定义的文本: {eqalname}'"
 
     @staticmethod
     def get_players() -> list:
@@ -111,7 +112,7 @@ class utils:
         try:
             return str(config[key]).strip()
         except KeyError:
-            return eval(utils.get_message("root.config_not_found", 0))
+            return f"'未定义的配置项: {key}'"
 
     @staticmethod
     def reverse_replace(string: str, old: str, new: str, max_count: int = -1) -> str:
@@ -164,7 +165,7 @@ class utils:
             return utils.replace_escape_string(string)
 
     @staticmethod
-    def get_param_type(function: typing.Callable) -> tuple:
+    def get_param_type(function: typing.Callable) -> list:
         """Get required type of parameter."""
         return [
             param[1].annotation
@@ -177,13 +178,13 @@ class utils:
         return len(inspect.signature(function).parameters.items())
 
 
-class game:
+class game(metaclass=ABCMeta):
     """A class to processing game's all event."""
 
     server_running = True
 
     @staticmethod
-    def command_interpreter(prompt: str) -> None:
+    def command_interpreter(prompt: str) -> typing.NoReturn:
         """a basic command interpreter."""
         while True:
             try:
@@ -235,7 +236,7 @@ class game:
         os._exit(error_level)
 
 
-class network:
+class network(metaclass=ABCMeta):
     """A large class, includes http server and websocket server."""
 
     accept_players = 0
@@ -357,6 +358,7 @@ class network:
             return None
 
         def process_response(self, request: str) -> bytes:
+            """Processing response text."""
             requested_file = request.split()[1]
             if not requested_file.replace(".", "", 1).replace("/", "", 1):
                 requested_file = "index.html"
@@ -680,9 +682,13 @@ class network:
                                     "color": data["color"],
                                 }
                             )
-                            await asyncio.wait(
-                                [user.send(message) for user in utils.get_websockets()]
-                            )
+                            with suppress(ValueError):
+                                await asyncio.wait(
+                                    [
+                                        user.send(message)
+                                        for user in utils.get_websockets()
+                                    ]
+                                )
                             message = json.dumps(
                                 {
                                     "type": "private",
@@ -762,12 +768,10 @@ class network:
                         message = json.dumps(
                             {"type": "ready", "content": data["content"]}
                         )
-            try:
+            with suppress(ValueError):
                 await asyncio.wait(
                     [user.send(message) for user in utils.get_websockets()]
                 )
-            except ValueError:
-                pass
 
     @staticmethod
     def run_ws_server() -> typing.NoReturn:
@@ -780,7 +784,7 @@ class network:
         asyncio.get_event_loop().run_forever()
 
 
-class commands:
+class commands(metaclass=ABCMeta):
     """All the commands over here."""
 
     class _CommandNotFoundError(Exception):
