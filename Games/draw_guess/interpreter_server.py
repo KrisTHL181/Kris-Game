@@ -26,7 +26,7 @@ import websockets
 init(autoreset=True)
 logger.remove()
 if __name__ == "__main__":
-    logger.add(sys.stderr, level=20, enqueue=True)  # 命令行句柄
+    logger.add(sys.stderr, level=0, enqueue=True)  # 命令行句柄
 logger.add(
     f"./logs/{time.strftime('%Y.%m.%d.log')}",
     encoding="utf-8",
@@ -49,9 +49,6 @@ class player:
         self.access = access
         self.scores = 0
         self.last_heartbeat = time.time()
-
-    def __str__(self):
-        return self.name
 
 
 players = []
@@ -181,8 +178,6 @@ class utils(metaclass=ABCMeta):
 class game(metaclass=ABCMeta):
     """A class to processing game's all event."""
 
-    server_running = True
-
     @staticmethod
     def command_interpreter(prompt: str) -> typing.NoReturn:
         """a basic command interpreter."""
@@ -288,11 +283,20 @@ class network(metaclass=ABCMeta):
 
             else:
                 self.content = content.encode("utf-8")
-                logger.debug(
-                    eval(
-                        utils.get_message("network.http_server.set_content", 0),
+                if len(content) <= 100:
+                    logger.debug(
+                        eval(
+                            utils.get_message("network.http_server.set_content", 0),
+                        )
                     )
-                )
+                else:
+                    logger.debug(
+                        eval(
+                            utils.get_message(
+                                "network.http_server.set_content_no_data", 0
+                            ),
+                        )
+                    )
 
         def build(self) -> bytes:
             """Building response text."""
@@ -302,79 +306,15 @@ class network(metaclass=ABCMeta):
             response = f"{response}\n\n".encode("utf-8") + self.content
             return response
 
-    class HTTP09Server(threading.Thread):
-        """A basic http0.9 server allows [GET] request."""
-
-        def __init__(self, host: str, port: int):
-            threading.Thread.__init__(self)
-            logger.debug(eval(utils.get_message("network.http_server09.listening", 0)))
-            self.host = host
-            self.port = port
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        def run(self) -> typing.NoReturn:
-            self.setup_socket()
-            self.change_dir()
-            self.accept()
-
-        def setup_socket(self) -> None:
-            """Install&init socket object."""
-            self.sock.bind((self.host, self.port))
-            self.sock.listen(int(utils.query_config("LISTENS_COUNT")))
-            self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
-            self.sock.setblocking(True)
-
-        def accept(self) -> typing.NoReturn:
-            """accepting request forever."""
-            while True:
-                (client, address) = self.sock.accept()
-                threading.Thread(
-                    target=self.accept_request, args=(client, address)
-                ).start()
-
-        def change_dir(self) -> None:
-            """Change working directory."""
-            os.chdir(utils.query_config("HTTP_PATH"))
-
-        def accept_request(
-            self, client_sock: socket.socket, client_addr: tuple
-        ) -> None:
-            """processing response and send it."""
-            logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
-            buffer = network.recv(client_sock)
-            req = b"".join(buffer).decode("utf-8")
-            response = self.process_response(req)
-            if not response:
-                logger.warning(
-                    eval(utils.get_message("network.http_server.recv_no_msg", 0))
-                )
-                return None
-            client_sock.sendall(response)
-            logger.debug(eval(utils.get_message("network.http_server.send_back", 0)))
-            # clean up
-            logger.debug(eval(utils.get_message("network.http_server.full", 0)))
-            client_sock.shutdown(socket.SHUT_WR)
-            client_sock.close()
-            return None
-
-        def process_response(self, request: str) -> bytes:
-            """Processing response text."""
-            requested_file = request.split()[1]
-            if not requested_file.replace(".", "", 1).replace("/", "", 1):
-                requested_file = "index.html"
-            requested_file = "./" + requested_file
-            requested_file = requested_file.split("?", 1)[0]
-            logger.debug(
-                eval(utils.get_message("network.http_server.requested_file", 0))
-            )
-            with open(requested_file, "r") as file:
-                return file.read().encode("utf-8")
-
     class HTTP11Server(threading.Thread):
         """A basic http1.1 server allows [GET, POST, and HEAD] request."""
 
         def __init__(
-            self, host: str, port: int, using_https: bool = False, cafile=None
+            self,
+            host: str,
+            port: int,
+            using_https: bool = False,
+            cafile: typing.Optional[str] = None,
         ):
             threading.Thread.__init__(self)
             logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
@@ -383,14 +323,14 @@ class network(metaclass=ABCMeta):
             if using_https:
                 try:
                     context = ssl.create_default_context(
-                        ssl.Purpose.SERVER_AUTH, cafile=cafile
+                        ssl.Purpose.CLIENT_AUTH, cafile=cafile
                     )
                     self.sock = context.wrap_socket(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
-                        server_hostname=socket.gethostbyname(socket.gethostname()),
+                        # server_hostname=socket.gethostbyname(socket.gethostname()),
                     )
-                except (ssl.SSLError, ValueError):
+                except (ssl.SSLError, ValueError) as err:
                     logger.warning(
                         eval(utils.get_message("network.https_server.ssl_error", 0))
                     )
@@ -410,6 +350,7 @@ class network(metaclass=ABCMeta):
             self.sock.listen(int(utils.query_config("LISTENS_COUNT")))
             self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
             self.sock.setblocking(True)
+            logger.debug(eval(utils.get_message("network.create_socket", 0)))
 
         def change_dir(self) -> None:
             """Change working directory."""
@@ -438,11 +379,18 @@ class network(metaclass=ABCMeta):
 
         def accept(self) -> typing.NoReturn:
             """accepting request forever."""
+            connections = 1
             while True:
-                (client, address) = self.sock.accept()
-                threading.Thread(
-                    target=self.accept_request, args=(client, address)
-                ).start()
+                while connections <= int(utils.query_config("LISTENS_COUNT")):
+                    threading.Thread(target=self.create_conn, args=()).start()
+                    logger.debug(eval(utils.get_message("network.too_few_connect", 0)))
+                    connections += 1
+                time.sleep(0.2)
+
+        def create_conn(self):
+            """Create a connection."""
+            (client, address) = self.sock.accept()
+            threading.Thread(target=self.accept_request, args=(client, address)).start()
 
         def process_response(self, request: str) -> bytes:
             """Processing response text."""
@@ -612,34 +560,6 @@ class network(metaclass=ABCMeta):
             )
             return builder.build()
 
-    class HTTP20Server(threading.Thread):
-        """A basic http 0.9 server allows [GET, POST, HEAD] request, support all frames."""
-
-        def __init__(
-            self, host: str, port: int, using_https: bool = False, cafile=None
-        ):
-            threading.Thread.__init__(self)
-            logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
-            self.host = host
-            self.port = port
-            if using_https:
-                try:
-                    context = ssl.create_default_context(
-                        ssl.Purpose.SERVER_AUTH, cafile=cafile
-                    )
-                    self.sock = context.wrap_socket(
-                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-                        server_side=True,
-                        server_hostname=socket.gethostbyname(socket.gethostname()),
-                    )
-                except (ssl.SSLError, ValueError):
-                    logger.warning(
-                        eval(utils.get_message("network.https_server.ssl_error", 0))
-                    )
-                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            else:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
     @staticmethod
     async def ws_server(websocket, path) -> typing.NoReturn:
         """Websocket server."""
@@ -724,7 +644,7 @@ class network(metaclass=ABCMeta):
                             utils.get_message("network.player.duplicate_login", 0),
                         )
                     )
-                    await commands.kick(data["content"])
+                    await websocket.close()
                 if data["content"] in banlist:
                     logger.info(eval(utils.get_message("network.player.banned", 0)))
                     await websocket.close()
@@ -788,16 +708,16 @@ class commands(metaclass=ABCMeta):
     """All the commands over here."""
 
     class _CommandNotFoundError(Exception):
-        def __init__(self, *args, **kwargs):
-            pass
+        pass
 
     class _RedirectToAlias(Exception):  # 其实是个信号 不是Error
-        def __init__(self, *args, **kwargs):
-            pass
+        pass
 
     class _AsyncFunction(Exception):
-        def __init__(self, *args, **kwargs):
-            pass
+        pass
+
+    class _PrivateFunction(Exception):
+        pass
 
     command_access = {
         "execute": 1,  # 执行命令
@@ -825,9 +745,11 @@ class commands(metaclass=ABCMeta):
         "list": "player_list",
     }
     async_commands = [
-        "kick",
         "say",
-        "ban",
+    ]
+    private_commands = [  # 设置内部方法 禁止调用
+        "execute",
+        "call_async",
     ]
 
     @staticmethod
@@ -862,7 +784,7 @@ class commands(metaclass=ABCMeta):
                     try:
                         compiled[index + 1] = param_types[1][index](parsing_type)
                     except ValueError:
-                        logger.debug(
+                        logger.warning(
                             eval(utils.get_message("command.execute.parse_failed", 0))
                         )
                         continue
@@ -895,10 +817,6 @@ class commands(metaclass=ABCMeta):
                             )
                         )
                     return out
-                try:
-                    return out
-                except NameError:
-                    return None
         except commands._RedirectToAlias:
             compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
@@ -909,17 +827,37 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
-        except commands._AsyncFunction as err:
-            raise NotImplementedError("Async execute is not implemented.") from err
+        except commands._AsyncFunction:
+            if players_access >= commands.command_access[compiled[0]]:
+                logger.info(eval(utils.get_message("command.execute", 0)))
+                return asyncio.run(getattr(commands, compiled[0])(*compiled[1:]))
+        except commands._PrivateFunction:
+            out = eval(utils.get_message("command.execute_private", 0))
+            logger.warning(out)
+            return out
+        except NotImplementedError:
+            out = eval(
+                utils.get_message("commands.execute.function_not_implemented", 0)
+            )
+            logger.warning(out)
         return out
 
     @staticmethod
-    async def kick(player_name: str) -> str:
+    def call_async(
+        function: typing.Union[typing.Callable, typing.Coroutine]
+    ) -> typing.Any:
+        """Execute a async function"""
+        if asyncio.iscoroutine(function):
+            return asyncio.run(function)
+        return asyncio.run(function())
+
+    @staticmethod
+    def kick(player_name: str) -> str:
         """Kick a player."""
         if player_name in utils.get_players():
             out = eval(utils.get_message("command.kick", 0))
             logger.info(out)
-            await utils.get_player(player_name).websocket.close()
+            commands.call_async(utils.get_player(player_name).websocket.close())
             utils.delete_player(player_name)
             return out
         out = eval(utils.get_message("command.kick.player_not_found", -3))
@@ -943,9 +881,7 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("command.stop", 0))
             logger.info(out)
         threading.Thread(
-            target=lambda: exec(
-                f"time.sleep({delay})\ngame.stop()\ngame.server_running=False"
-            )
+            target=lambda: exec(f"time.sleep({delay})\ngame.stop()")
         ).start()
         return out
 
@@ -971,7 +907,9 @@ class commands(metaclass=ABCMeta):
         commands_list = [
             method
             for method in dir(commands)
-            if not method.startswith("_") and callable(getattr(commands, method))
+            if not method.startswith("_")
+            and callable(getattr(commands, method))
+            and method not in commands.private_commands
         ]
         out = eval(utils.get_message("command.get_commands", 0))
         logger.info(out)
@@ -1000,10 +938,10 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
-    def player_access(player_name: str, access_: str) -> str:
+    def player_access(player_name: str, access_name: str) -> str:
         """Change player's access."""
         if player_name in utils.get_players():
-            new_access = accesses.get(access_)
+            new_access = accesses.get(access_name)
             if new_access is None:
                 out = eval(utils.get_message("command.player_access", -3))
                 logger.warning(out)
@@ -1051,7 +989,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
-    async def ban(player_name: str) -> str:
+    def ban(player_name: str) -> str:
         """Ban a player, it never join the game."""
         if not player_name:
             out = eval(utils.get_message("command.ban", -3))
@@ -1066,7 +1004,7 @@ class commands(metaclass=ABCMeta):
         with open("banlist.txt", "a", encoding="utf-8") as ban_file:
             ban_file.write(player_name + "\n")
         banlist.append(player_name)
-        await commands.kick(player_name)
+        commands.kick(player_name)
         out = eval(utils.get_message("command.ban", 0))
         logger.info(out)
         return out
@@ -1121,16 +1059,21 @@ class commands(metaclass=ABCMeta):
 
 config = {}
 
-try:
-    with open("./config/config.cfg", "r", encoding="utf-8") as f:
-        for line in f.readlines():
-            config_dict = line.split(" = ")
-            config[config_dict[0]] = config_dict[1]
-except FileNotFoundError:
-    if not os.path.exists("./config/"):
-        os.mkdir("./config/")
-    with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
-        f.write("HTTP_TIMEOUT = 60\nLISTENS_COUNT = 8")
+while True:
+    try:
+        with open("./config/config.cfg", "r", encoding="utf-8") as f:
+            for line in f.readlines():
+                config_dict = line.split(" = ")
+                config[config_dict[0]] = config_dict[1]
+    except FileNotFoundError:
+        if not os.path.exists("./config/"):
+            os.mkdir("./config/")
+        with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
+            f.write(
+                "HTTP_PORT = 3872\nWS_PORT = 3827\nHTTP_TIMEOUT = 5\nLISTENS_COUNT = 8\nHTTP_SERVER_NAME = Kris's HTTP Server\nLANGUAGE = zh_cn\nPROMPT = >>>\nSYSTEM_NAME = Server\nSPACE_COUNT = 4\nHTTP_PATH = ..\\..\\\nHTTPS_CAFILE = None\n"
+            )
+    else:
+        break
 
 lang = {}
 _COMMENTING = False
@@ -1209,9 +1152,7 @@ def run(enabled_shell=True, override_sys_excepthook=True):
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
     try:
-        network.HTTP11Server(
-            "0.0.0.0", int(utils.query_config("HTTP_PORT")), using_https=True
-        ).start()
+        network.HTTP11Server("0.0.0.0", int(utils.query_config("HTTP_PORT"))).start()
     except RuntimeError:
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
