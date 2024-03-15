@@ -322,7 +322,7 @@ class network(metaclass=ABCMeta):
             return response
 
     class HTTP11Server(threading.Thread):
-        """A basic http1.1 server allows [GET, POST, and HEAD] request."""
+        """A basic http1.1 server allows [GET, POST] request."""
 
         def __init__(
             self,
@@ -423,8 +423,6 @@ class network(metaclass=ABCMeta):
                 return self.get_request(requested_file, formatted_data)
             if request_words[0] == "POST":
                 return self.post_request(requested_file, formatted_data)
-            if request_words[0] == "HEAD":
-                return self.head_request(requested_file, formatted_data)
             return self.method_not_allowed()
 
         def has_permission_other(self, requested_file: str) -> bool:
@@ -558,19 +556,6 @@ class network(metaclass=ABCMeta):
                 ),
             )
             builder.set_content(self.get_file_contents(requested_file))
-            return builder.build()
-
-        def head_request(self, requested_file: str, data):
-            """Processing HEAD request."""
-            builder = network.ResponseBuilder()
-            builder.set_status("200", "OK")
-            builder.add_header("Connection", "close")
-            builder.add_header(
-                "Content-Type",
-                mime_types.get(
-                    requested_file.rsplit(".")[-1], "application/octet-stream"
-                ),
-            )
             return builder.build()
 
     @staticmethod
