@@ -5,11 +5,13 @@ from contextlib import suppress
 from mimetypes import types_map as mime_types
 from abc import ABCMeta
 import json
+import random
 import time
 import os
 import asyncio
 import threading
 import socket
+from tkinter import CURRENT
 import typing
 import sys
 import functools
@@ -43,14 +45,27 @@ accesses: dict = {"server": 4, "admin": 3, "player": 2, "spectators": 1, "banned
 class player:
     """A class for player."""
 
-    def __init__(self, name, websocket, access=2):
+    def __init__(self, name: str, websocket, access: int=2):
         self.name = name
         self.websocket = websocket
         self.access = access
-        self.scores = 0
+        self.score = 0
         self.last_heartbeat = time.time()
 
+    def get_name(self) -> str:
+        return self.name
 
+    def get_websocket(self):
+        return self.websocket
+
+    def get_access(self) -> str:
+        return self.access
+    
+    def get_score(self) -> int:
+        return self.score
+    
+    def get_last_heartbeat_time(self) -> int:
+        return self.last_heartbeat
 players = []
 
 
@@ -69,14 +84,14 @@ class utils(metaclass=ABCMeta):
     @staticmethod
     def get_players() -> list:
         """Get all player's name."""
-        return [iter_player.name for iter_player in players]
+        return [iter_player.get_name() for iter_player in players]
 
     @staticmethod
     def get_player(name: str) -> player:
         """Get player object by name"""
         if name == utils.query_config("SYSTEM_NAME"):
             return player(utils.query_config("SYSTEM_NAME"), None, accesses["server"])
-        return [iter_player for iter_player in players if iter_player.name == name][0]
+        return [iter_player for iter_player in players if iter_player.get_name() == name][0]
 
     @staticmethod
     def delete_player(name: str) -> None:
@@ -416,15 +431,6 @@ class network(metaclass=ABCMeta):
             """Check readable permissions"""
             return os.access(requested_file, os.R_OK)
 
-        def _check_binary(self, data_bytes: typing.Union[str, bytes]) -> bool:
-            return bool(
-                data_bytes.translate(
-                    None,
-                    bytearray(
-                        {7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7F}
-                    ),
-                )
-            )
 
         def should_return_binary(self, filename: str) -> bool:
             """Check file is binary"""
@@ -435,7 +441,14 @@ class network(metaclass=ABCMeta):
                         utils.get_message("network.http_server.file_contents", 0),
                     )
                 )
-                return self._check_binary(file.read())
+                return bool(
+                    file.read().translate(
+                        None,
+                        bytearray(
+                            {7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7F}
+                        ),
+                    )
+                )
 
         def get_file_binary_contents(self, filename: str) -> bytes:
             """Get (binary) file content."""
@@ -566,132 +579,141 @@ class network(metaclass=ABCMeta):
         # 采用JSON式
         # 将新连接的客户端添加到clients集合中
         async for message in websocket:
-            logger.debug(eval(utils.get_message("network.ws_server.recived", 0)))
-            try:
-                data: dict = json.loads(str(message.replace("'", '"')), strict=False)
-            except json.JSONDecodeError:
-                logger.warning(
-                    eval(
-                        utils.get_message("network.ws_server.json_decode_error", 0),
-                    )
-                )
-                continue
-            if (data.get("type") is None) or (data.get("content") is None):
-                logger.warning(
-                    eval(
-                        utils.get_message("network.ws_server.json_missing_keyword", 0),
-                    )
-                )
-                continue
-            # 在前端接收数据包并显示
-            if data["type"] == "send":
-                if len(players) != 0:  # asyncio.wait doesn't accept an empty list
-                    if data["sender"] in utils.get_players():
-                        if data["content"].startswith(
-                            "/"
-                        ):  # 以/为指令运行 0为正常 -1没权限 -2命令错 -3东西没找到
-                            exec_ = commands.execute(
-                                data["sender"], data["content"].replace("/", "", 1)
-                            )
-                            # message = json.dumps({"type": "system", "content": exec_})
-                            message = json.dumps(
-                                {
-                                    "type": "send",
-                                    "content": data["content"],
-                                    "sender": data["sender"],
-                                    "color": data["color"],
-                                }
-                            )
-                            with suppress(ValueError):
-                                await asyncio.wait(
-                                    [
-                                        user.send(message)
-                                        for user in utils.get_websockets()
-                                    ]
-                                )
-                            message = json.dumps(
-                                {
-                                    "type": "private",
-                                    "sender": utils.query_config("SYSTEM_NAME"),
-                                    "to": data["sender"],
-                                    "content": exec_,
-                                    "color": "#808080",
-                                }
-                            )
-                        else:
-                            message = json.dumps(
-                                {
-                                    "type": "send",
-                                    "content": data["content"],
-                                    "sender": data["sender"],
-                                    "color": data["color"],
-                                }
-                            )
-                            logger.info(
-                                eval(utils.get_message("network.player.send", 0))
-                            )
-                    else:
-                        logger.info(
-                            eval(
-                                utils.get_message("network.player.anonymous_send", 0),
-                            )
-                        )
-                        continue
-            elif data["type"] == "login":
-                if data["content"] in utils.get_players():
+            with suppress(IndexError):
+                CURRENT_OWNER=""
+                logger.debug(eval(utils.get_message("network.ws_server.recived", 0)))
+                messages=[]
+                try:
+                    data: dict = json.loads(str(message.replace("'", '"')), strict=False)
+                except json.JSONDecodeError:
                     logger.warning(
                         eval(
-                            utils.get_message("network.player.duplicate_login", 0),
+                            utils.get_message("network.ws_server.json_decode_error", 0),
                         )
                     )
-                    await websocket.close()
-                if data["content"] in banlist:
-                    logger.info(eval(utils.get_message("network.player.banned", 0)))
-                    await websocket.close()
                     continue
-                if len(players) != 0:  # asyncio.wait doesn't accept an empty list
-                    message = json.dumps(
-                        {"type": "login", "content": data["content"]}
-                    )  # content是名字
-                    utils.login_player(data["content"], websocket)
-                    logger.info(eval(utils.get_message("network.player.login", 0)))
-            elif data["type"] == "logout":
-                if len(players) != 0:  # asyncio.wait doesn't accept an empty list
-                    message = json.dumps({"type": "logout", "content": data["content"]})
-                    utils.delete_player(data["content"])
-                    logger.info(eval(utils.get_message("network.logout", 0)))
-                    continue
-            elif data["type"] == "paint":
-                if len(players) != 0:
-                    message = json.dumps({"type": "paint", "content": data["content"]})
-                    logger.info(
-                        eval(utils.get_message("network.player.update_paint", 0))
-                    )
-            elif data["type"] == "heartbeat":
-                if len(players) != 0:
-                    message = json.dumps(
-                        {"type": "heartbeat", "content": data["content"]}
-                    )
-                    utils.get_player(data["content"]).last_heartbeat = time.time()
-                    logger.debug(
-                        eval(utils.get_message("network.player.keep_alive", 0))
-                    )
-                    continue
-            elif data["type"] == "ready":
-                if len(players) != 0:
-                    network.accept_players += 1
-                    if network.accept_players == len(players) >= MIN_PLAYERS:
-                        message = json.dumps({"type": "start", "content": "game_start"})
-                        logger.info(eval(utils.get_message("game.game_start", 0)))
-                    else:
-                        logger.info(eval(utils.get_message("network.player.ready", 0)))
-                        message = json.dumps(
-                            {"type": "ready", "content": data["content"]}
+                if (data.get("type") is None) or (data.get("content") is None):
+                    logger.warning(
+                        eval(
+                            utils.get_message("network.ws_server.json_missing_keyword", 0),
                         )
-            with suppress(ValueError):
-                await asyncio.wait(
-                    [user.send(message) for user in utils.get_websockets()]
-                )
+                    )
+                    continue
+                # 在前端接收数据包并显示
+                if data["type"] == "send":
+                    if len(players) != 0:  # asyncio.wait doesn't accept an empty list
+                        if data["sender"] in utils.get_players():
+                            if data["content"].startswith(
+                                "/"
+                            ):  # 以/为指令运行 0为正常 -1没权限 -2命令错 -3东西没找到
+                                executed = commands.execute(
+                                    data["sender"], data["content"].replace("/", "", 1)
+                                )
+                                messages.append(json.dumps(
+                                    {
+                                        "type": "send",
+                                        "content": data["content"],
+                                        "sender": data["sender"],
+                                        "color": data["color"],
+                                    }
+                                ))
+
+                                messages.append(json.dumps(
+                                    {
+                                        "type": "private",
+                                        "sender": utils.query_config("SYSTEM_NAME"),
+                                        "to": data["sender"],
+                                        "content": executed,
+                                        "color": "#808080",
+                                    }
+                                ))
+                            else:
+                                messages.append(json.dumps(
+                                    {
+                                        "type": "send",
+                                        "content": data["content"],
+                                        "sender": data["sender"],
+                                        "color": data["color"],
+                                    }
+                                ))
+                                logger.info(
+                                    eval(utils.get_message("network.player.send", 0))
+                                )
+                        else:
+                            logger.info(
+                                eval(
+                                    utils.get_message("network.player.anonymous_send", 0),
+                                )
+                            )
+                            continue
+                elif data["type"] == "login":
+                    if data["content"] in utils.get_players():
+                        logger.warning(
+                            eval(
+                                utils.get_message("network.player.duplicate_login", 0),
+                            )
+                        )
+                        await websocket.close()
+                    if data["content"] in banlist:
+                        logger.info(eval(utils.get_message("network.player.banned", 0)))
+                        await websocket.close()
+                        continue
+                    if len(players) != 0:  # asyncio.wait doesn't accept an empty list
+                        message.append(json.dumps(
+                            {"type": "login", "content": data["content"]}
+                        ))  # content是名字
+                        utils.login_player(data["content"], websocket)
+                        logger.info(eval(utils.get_message("network.player.login", 0)))
+                elif data["type"] == "logout":
+                    if len(players) != 0:  # asyncio.wait doesn't accept an empty list
+                        messages.append(json.dumps({"type": "logout", "content": data["content"]}))
+                        utils.delete_player(data["content"])
+                        logger.info(eval(utils.get_message("network.logout", 0)))
+                        continue
+                elif data["type"] == "gamedata":
+                    if len(players) != 0:
+                        if data["uploader"] != CURRENT_OWNER:
+                            logger.warning(
+                                eval(
+                                    utils.get_message("network.player.anonymous_upload", 0),
+                                )
+                            )
+                            continue
+                        message.append(json.dumps({"type": "gamedata", "content": data["content"], "uploader": data["sender"]}))
+                        logger.info(
+                            eval(utils.get_message("network.player.update_paint", 0))
+                        )
+                elif data["type"] == "heartbeat":
+                    if len(players) != 0:
+                        messages.append(json.dumps(
+                            {"type": "heartbeat", "content": data["content"]}
+                        ))
+                        utils.get_player(data["content"]).last_heartbeat = time.time()
+                        logger.debug(
+                            eval(utils.get_message("network.player.keep_alive", 0))
+                        )
+                        continue
+                elif data["type"] == "ready":
+                    if len(players) != 0:
+                        network.accept_players += 1
+                        if network.accept_players == len(players) >= MIN_PLAYERS:
+                            messages.append(json.dumps({"type": "start",
+                                                        "content": "game_start",
+                                                        "owner": random.choice(utils.get_players()),
+                                                        "mspf": utils.query_config("MSPF"),  # MilliSeconds Per Frame
+                                                        }))
+                            
+                            logger.info(eval(utils.get_message("game.game_start", 0)))
+                        else:
+                            logger.info(eval(utils.get_message("network.player.ready", 0)))
+                            message.append(json.dumps(
+                                {"type": "ready", "content": data["content"]}
+                            ))
+            for message in messages:
+                with suppress(ValueError):
+                    await asyncio.wait(
+                        [user.send(message) for user in utils.get_websockets()]
+                    )
 
     @staticmethod
     def run_ws_server() -> typing.NoReturn:
@@ -708,16 +730,16 @@ class commands(metaclass=ABCMeta):
     """All the commands over here."""
 
     class _CommandNotFoundError(Exception):
-        pass
+        """A signal means command not found."""
 
     class _RedirectToAlias(Exception):  # 其实是个信号 不是Error
-        pass
+        """A signal means executed command is defined in alias list."""
 
     class _AsyncFunction(Exception):
-        pass
+        """This is a async function, execute it using asyncio.run()"""
 
     class _PrivateFunction(Exception):
-        pass
+        """This command cannot call normally."""
 
     command_access = {
         "execute": 1,  # 执行命令
@@ -831,6 +853,9 @@ class commands(metaclass=ABCMeta):
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
                 return asyncio.run(getattr(commands, compiled[0])(*compiled[1:]))
+            out=eval(utils.get_message("command.execute.access_denied", 0))
+            logger.warning(out)
+            return out
         except commands._PrivateFunction:
             out = eval(utils.get_message("command.execute_private", 0))
             logger.warning(out)
@@ -840,7 +865,7 @@ class commands(metaclass=ABCMeta):
                 utils.get_message("commands.execute.function_not_implemented", 0)
             )
             logger.warning(out)
-        return out
+            return out
 
     @staticmethod
     def call_async(
@@ -926,7 +951,9 @@ class commands(metaclass=ABCMeta):
                 try:
                     os.remove(file_path)  # 删除文件
                 except PermissionError:
-                    logger.warning(eval(utils.get_message("command.clean_logs", -1)))
+                    new_info=eval(utils.get_message("command.clean_logs", -1))
+                    logger.warning(new_info)
+                    out+=new_info
         return out
 
     @staticmethod

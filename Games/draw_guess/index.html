@@ -70,10 +70,8 @@
         );
         var ws = new WebSocket(websocket_port);
 
-        function is_owner() {
-            return true;
-        }
-        var current_select = "black";
+        var current_select;
+        current_select="black";
 
         function select(id) {
             current_select = id;
@@ -100,6 +98,8 @@
             subject_3();
             level_exchaim();
         }
+        var is_owner;
+        is_owner=false;
         ws.onmessage = function (event) {
             console.log("Received message:", event.data);
             var data = JSON.parse(event.data);
@@ -109,15 +109,33 @@
                 onMessage("", data.content + " 进入了游戏", color = "#ffaa00", split = "");
             } else if ((data.type) == "logout") {
                 onMessage("", data.content + " 退出了游戏", color = "#ffaa00", split = "");
-            } else if ((data.type) == "paint") {
+            } else if ((data.type) == "gamedata") {
                 document.getElementById("painter").src = content;
             } else if ((data.type) == "private") {
                 if (data.to == name) {
                     onMessage(data.sender + "(私信)", data.content, color = data.color);
                 }
+            } else if ((data.type) == "start") {
+                if (data.owner == name) {
+                    is_owner=true;
+                    setInterval(send_image, data.mspf)
+                }
+                else {
+                    is_owner=false;
+                }
             }
         }
-        var opened = false;
+        function send_image(){
+            ws.send(
+                JSON.stringify({
+                    type: "gamedata",
+                    "content": convertCanvasToImage(canvas),
+                    "uploader": name,
+                    })
+            );
+        }
+        var opened;
+        opened=false;
         ws.onopen = function () {
             opened = true;
             ws.send(
@@ -126,6 +144,7 @@
                     content: name,
                 })
             );
+            getElementById("canvas").style.display = "block"
         };
 
         function heartbeat() {
@@ -160,9 +179,11 @@
             <p id="modal_msg"></p>
         </div>
     </div>
+    <p id="logger"></p>
     <div id="GameReady">
 
     </div>
+    
     <div id="main_game">
         <div id="owner">
             <button type="button" id="black" style="
@@ -273,7 +294,7 @@
         function draw(e) {
             if (!isDrawing) return;
             if (game_over) return;
-            if (!is_owner()) return;
+            if (!is_owner) return;
             ctx.strokeStyle = color;
             ctx.lineWidth = lineWidth;
             ctx.lineCap = "round";
@@ -488,13 +509,6 @@
                 }
             }
 
-            AddListener();
-            //循环
-            setInterval(
-                function () {
-                    Rander();
-                },
-                1000 / 60);
             //添加事件监听器
             function AddListener() {
                 //当前事件对象会作为第一个参数传入函数
@@ -503,7 +517,7 @@
                 document.addEventListener("touchstart", Touch);
             }
             //逐个渲染
-            function Rander() {
+            function render() {
                 for (var i = 0; i < elementGroup.length; i++) {
                     elementGroup[i].update();
                     if (elementGroup[i].lifeSpan < 0) {
@@ -538,8 +552,15 @@
                     }
                 }
             }
-        })();
+            AddListener();
+            //循环
+            setInterval(
+                function () {
+                    render();
+                },
+                1000 / 60);
 
+        })();
     </script>
 </body>
 

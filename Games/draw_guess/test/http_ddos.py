@@ -5,6 +5,7 @@ Arg 2: Port
 """
 
 from contextlib import suppress
+from threading import Thread
 import socket
 import time
 
@@ -28,8 +29,13 @@ def send_request(ip, port, wait_time=0):
     time.sleep(wait_time)
 
 
-while True:
+def packet(ip, port)
+    """发送一次数据包并记录时间"""
     LAST_TIME = time.perf_counter()
-    send_request("127.0.0.1", 3872)
+    send_request(ip, port)
     LAST_PACKET_TIME = time.perf_counter()
     print(f"Packet Time: {round(LAST_PACKET_TIME - LAST_TIME, 3)}")
+
+if __name__ == "__main__":
+    while True:
+        Thread(target=packet, args=("127.0.0.1", 3872)).start()
