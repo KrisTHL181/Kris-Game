@@ -268,6 +268,8 @@ class network(metaclass=ABCMeta):
                 buffer.append(data)
             except BlockingIOError:  # BlockingIOError: 缓冲区没有剩余的数据
                 break
+            except ConnectionResetError: # ConnectionResetError: 连接被关闭
+                break
         client_sock.setblocking(True)
         return buffer
 
