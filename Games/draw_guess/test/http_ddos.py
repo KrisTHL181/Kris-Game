@@ -29,7 +29,7 @@ def send_request(ip, port, wait_time=0):
     time.sleep(wait_time)
 
 
-def packet(ip, port)
+def packet(ip, port):
     """发送一次数据包并记录时间"""
     LAST_TIME = time.perf_counter()
     send_request(ip, port)
