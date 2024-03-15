@@ -60,10 +60,10 @@ class player:
 
     def get_access(self) -> str:
         return self.access
-    
+
     def get_score(self) -> int:
         return self.score
-    
+
     def get_last_heartbeat_time(self) -> int:
         return self.last_heartbeat
 players = []
@@ -576,13 +576,11 @@ class network(metaclass=ABCMeta):
     @staticmethod
     async def ws_server(websocket, path) -> typing.NoReturn:
         """Websocket server."""
-        # 采用JSON式
-        # 将新连接的客户端添加到clients集合中
+        current_owner = ""
         async for message in websocket:
+            messages=[]
             with suppress(IndexError):
-                CURRENT_OWNER=""
                 logger.debug(eval(utils.get_message("network.ws_server.recived", 0)))
-                messages=[]
                 try:
                     data: dict = json.loads(str(message.replace("'", '"')), strict=False)
                 except json.JSONDecodeError:
@@ -672,7 +670,7 @@ class network(metaclass=ABCMeta):
                         continue
                 elif data["type"] == "gamedata":
                     if len(players) != 0:
-                        if data["uploader"] != CURRENT_OWNER:
+                        if data["uploader"] != current_owner:
                             logger.warning(
                                 eval(
                                     utils.get_message("network.player.anonymous_upload", 0),
@@ -697,12 +695,16 @@ class network(metaclass=ABCMeta):
                     if len(players) != 0:
                         network.accept_players += 1
                         if network.accept_players == len(players) >= MIN_PLAYERS:
-                            messages.append(json.dumps({"type": "start",
-                                                        "content": "game_start",
-                                                        "owner": random.choice(utils.get_players()),
-                                                        "mspf": utils.query_config("MSPF"),  # MilliSeconds Per Frame
-                                                        }))
-                            
+                            messages.append(json.dumps(
+                                {
+                                    "type": "start",
+                                    "content": "game_start",
+                                    "owner": random.choice(utils.get_players()),
+                                    "mspf": utils.query_config("MSPF") # Milisecond per frame
+                                }
+                                )
+                            )
+
                             logger.info(eval(utils.get_message("game.game_start", 0)))
                         else:
                             logger.info(eval(utils.get_message("network.player.ready", 0)))
@@ -732,7 +734,7 @@ class commands(metaclass=ABCMeta):
     class _CommandNotFoundError(Exception):
         """A signal means command not found."""
 
-    class _RedirectToAlias(Exception):  # 其实是个信号 不是Error
+    class _RedirectToAlias(Exception):
         """A signal means executed command is defined in alias list."""
 
     class _AsyncFunction(Exception):
@@ -1090,7 +1092,7 @@ while True:
     try:
         with open("./config/config.cfg", "r", encoding="utf-8") as f:
             for line in f.readlines():
-                config_dict = line.split(" = ")
+                config_dict = line.split("//")[0].strip().split(" = ")
                 config[config_dict[0]] = config_dict[1]
     except FileNotFoundError:
         if not os.path.exists("./config/"):
