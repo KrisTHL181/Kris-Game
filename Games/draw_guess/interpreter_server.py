@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 """A draw&guess game, includes websocket server and http server."""
+from __future__ import annotations
+
 import ast
 import asyncio
 import functools
@@ -61,7 +63,7 @@ class utils(metaclass=ABCMeta):
 
     @staticmethod
     @functools.cache
-    def get_message(eqalname: str, value: typing.Union[int, float]) -> str:
+    def get_message(eqalname: str, value: int | float) -> str:
         """Query message in language file."""
         try:
             return str(lang[eqalname + "." + str(value)]).strip()
@@ -78,9 +80,16 @@ class utils(metaclass=ABCMeta):
         """Get player object by name."""
         if name == utils.query_config("SYSTEM_NAME"):
             return player(utils.query_config("SYSTEM_NAME"), None, accesses["server"])
-        return [
-            iter_player for iter_player in players if iter_player.get_name() == name
-        ][0]
+
+        return next(
+            iter(
+                [
+                    iter_player
+                    for iter_player in players
+                    if iter_player.get_name() == name
+                ],
+            ),
+        )
 
     @staticmethod
     def delete_player(name: str) -> None:
@@ -89,7 +98,7 @@ class utils(metaclass=ABCMeta):
 
     @staticmethod
     def login_player(name: str, websocket) -> player:
-        """Added 1 player to players list."""
+        """Add 1 player to players list."""
         logined_player = player(name, websocket)
         players.append(name)
         return logined_player
@@ -97,9 +106,15 @@ class utils(metaclass=ABCMeta):
     @staticmethod
     def get_websocket(name: str):
         """Get player's websocket object."""
-        return [
-            iter_player.websocket for iter_player in players if iter_player.name == name
-        ][0]
+        return next(
+            iter(
+                [
+                    iter_player.websocket
+                    for iter_player in players
+                    if iter_player.name == name
+                ],
+            ),
+        )
 
     @staticmethod
     def get_websockets() -> list:
@@ -117,7 +132,7 @@ class utils(metaclass=ABCMeta):
 
     @staticmethod
     def reverse_replace(string: str, old: str, new: str, max_count: int = -1) -> str:
-        """Reverse string and replace string"""
+        """Reverse string and replace string."""
         # 从后往前查找旧字符串
         reversed_string = string[::-1]
         reversed_old = old[::-1]
@@ -134,8 +149,7 @@ class utils(metaclass=ABCMeta):
             )
 
         # 将结果反转回来
-        result = reversed_result[::-1]
-        return result
+        return reversed_result[::-1]
 
     placeholder_replacer = re.compile("{(.*?)}")
 
@@ -149,12 +163,11 @@ class utils(metaclass=ABCMeta):
         string = string.replace("\\t", chr(9))
         string = string.replace("\\f", chr(12))
         string = string.replace("\\t", chr(9))
-        string = string.replace("\\r", chr(13))
-        return string
+        return string.replace("\\r", chr(13))
 
     @staticmethod
-    def parse(string: str, **variables) -> str:
-        """Parsing f-string"""
+    def parse(string: str, **variables: typing.Any) -> str:
+        """Parse f-string."""
         try:
             return utils.replace_escape_string(string.format(**variables))
         except KeyError:
@@ -187,7 +200,7 @@ class game(metaclass=ABCMeta):
 
     @staticmethod
     def command_interpreter(prompt: str) -> typing.NoReturn:
-        """A basic command interpreter."""
+        """Command interpreter."""
         while True:
             try:
                 commands.execute(utils.query_config("SYSTEM_NAME"), str(input(prompt)))
@@ -249,7 +262,7 @@ class network(metaclass=ABCMeta):
         buffer = [client_sock.recv(1024)]
         if buffer[0] in (0, -1):
             return []
-        client_sock.setblocking(False)
+        client_sock.setblocking(0)
         while True:
             try:
                 data = client_sock.recv(1024)
@@ -258,13 +271,14 @@ class network(metaclass=ABCMeta):
                 break
             except ConnectionResetError:  # ConnectionResetError: 连接被关闭
                 break
-        client_sock.setblocking(True)
+        client_sock.setblocking(1)
         return buffer
 
     class ResponseBuilder:
         """Response message builder."""
 
-        def __init__(self):
+        def __init__(self) -> None:
+            """Set variables."""
             self.headers = []
             self.status = None
             self.content = None
@@ -276,11 +290,11 @@ class network(metaclass=ABCMeta):
             logger.debug(eval(utils.get_message("network.http_server.set_header", 0)))
 
         def set_status(self, status_code: str, status_message: str) -> None:
-            """Setting HTTP reply status."""
+            """Set HTTP reply status."""
             self.status = f"HTTP/1.1 {status_code} {status_message}"
             logger.debug(eval(utils.get_message("network.http_server.set_status", 0)))
 
-        def set_content(self, content: typing.Union[str, bytes, bytearray]) -> None:
+        def set_content(self, content: str | bytes | bytearray) -> None:
             """Set reply content."""
             if isinstance(content, (bytes, bytearray)):
                 self.content = content
@@ -292,7 +306,7 @@ class network(metaclass=ABCMeta):
                 return
 
             self.content = content.encode("utf-8")
-            if len(content) <= 100:
+            if len(content) <= int(utils.query_config("MAX_CONTEXT_SIZE")):
                 logger.debug(
                     eval(
                         utils.get_message("network.http_server.set_content", 0),
@@ -306,12 +320,11 @@ class network(metaclass=ABCMeta):
             )
 
         def build(self, newline: str = "\r\n") -> bytes:
-            """Building response text."""
+            """Build response text."""
             response = f"{self.status}{newline}"
             for i in self.headers:
                 response += i + f"{newline}"
-            response = f"{response}{newline}{newline}".encode() + self.content
-            return response
+            return f"{response}{newline}{newline}".encode() + self.content
 
     class HTTP11Server(threading.Thread):
         """A basic http1.1 server allows [GET, POST] request."""
@@ -321,8 +334,9 @@ class network(metaclass=ABCMeta):
             host: str,
             port: int,
             using_https: bool = False,
-            cafile: typing.Optional[str] = None,
-        ):
+            cafile: str | None = None,
+        ) -> None:
+            """Set variables."""
             threading.Thread.__init__(self)
             logger.debug(eval(utils.get_message("network.http_server.listening", 0)))
             self.host = host
@@ -338,7 +352,6 @@ class network(metaclass=ABCMeta):
                     self.sock = context.wrap_socket(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
-                        # server_hostname=socket.gethostbyname(socket.gethostname()),
                     )
                 except (ssl.SSLError, ValueError):
                     logger.warning(
@@ -349,7 +362,7 @@ class network(metaclass=ABCMeta):
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         def run(self) -> typing.NoReturn:
-            """Start HTTP server"""
+            """Start HTTP server."""
             self.setup_socket()
             self.change_dir()
             self.accept()
@@ -359,7 +372,7 @@ class network(metaclass=ABCMeta):
             self.sock.bind((self.host, self.port))
             self.sock.listen(int(utils.query_config("LISTENS_COUNT")))
             self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
-            self.sock.setblocking(True)
+            self.sock.setblocking(0)
             logger.debug(eval(utils.get_message("network.create_socket", 0)))
 
         def change_dir(self) -> None:
@@ -371,11 +384,15 @@ class network(metaclass=ABCMeta):
             client_sock: socket.socket,
             client_addr: tuple,
         ) -> None:
-            """Processing response and send it."""
+            """Process response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
 
-            if time.time() - self.request_times.get(client_addr[0], 0) <= 0.5:
-                if self.warnlist.count(client_addr[0]) >= 5:
+            if time.time() - self.request_times.get(client_addr[0], 0) <= float(
+                utils.query_config("DDOS_DETECT_TIME")
+            ):
+                if self.warnlist.count(client_addr[0]) >= int(
+                    utils.query_config("RAISE_DDOS_ALARM")
+                ):
                     logger.warning(
                         eval(utils.get_message("network.http_server.ddos", 0)),
                     )
@@ -390,7 +407,9 @@ class network(metaclass=ABCMeta):
                     eval(utils.get_message("network.http_server.detect_ddos", 0)),
                 )
                 self.warnlist.append(client_addr[0])
-            elif time.time() - self.request_times.get(client_addr[0], time.time()) >= 5:
+            elif time.time() - self.request_times.get(
+                client_addr[0], time.time()
+            ) >= int(utils.query_config("STOP_DDOS_ALARM")):
                 logger.info(
                     eval(utils.get_message("network.http_server.wrong_detect_ddos", 0)),
                 )
@@ -414,17 +433,17 @@ class network(metaclass=ABCMeta):
             return
 
         def accept(self) -> typing.NoReturn:
-            """Accepting request forever."""
+            """Accept request forever."""
             while True:
                 self.create_conn()
 
-        def create_conn(self):
+        def create_conn(self) -> None:
             """Create a connection."""
             (client, address) = self.sock.accept()
             threading.Thread(target=self.accept_request, args=(client, address)).start()
 
         def process_response(self, request: str) -> bytes:
-            """Processing response text."""
+            """Process response text."""
             logger.debug(
                 eval(utils.get_message("network.http_server.process_response", 0)),
             )
@@ -442,11 +461,11 @@ class network(metaclass=ABCMeta):
             return self.method_not_allowed()
 
         def has_permission_other(self, requested_file: str) -> bool:
-            """Check readable permissions"""
+            """Check readable permissions."""
             return os.access(requested_file, os.R_OK)
 
         def should_return_binary(self, filename: str) -> bool:
-            """Check file is binary"""
+            """Check file is binary."""
             logger.debug(eval(utils.get_message("network.http_server.check_binary", 0)))
             with open(filename, "rb") as file:
                 logger.debug(
@@ -529,16 +548,16 @@ class network(metaclass=ABCMeta):
             return builder.build()
 
         def method_not_allowed(self) -> bytes:
-            """Returns 405 not allowed status and gives allowed methods."""
+            """Return 405 not allowed status and gives allowed methods."""
             builder = network.ResponseBuilder()
             builder.set_status("405", "METHOD NOT ALLOWED")
-            allowed = ", ".join(["GET", "POST"])
+            allowed = f"{'GET'}, {'POST'}"
             builder.add_header("Allow", allowed)
             builder.add_header("Connection", "close")
             return builder.build()
 
         def resource_not_found(self) -> bytes:
-            """Returns 404 not found status and sends back our 404.html page."""
+            """Return 404 not found status and sends back our 404.html page."""
             builder = network.ResponseBuilder()
             builder.set_status("404", "NOT FOUND")
             builder.add_header("Connection", "close")
@@ -547,7 +566,7 @@ class network(metaclass=ABCMeta):
             return builder.build()
 
         def resource_forbidden(self) -> bytes:
-            """Returns 403 FORBIDDEN status and sends back our 403.html page."""
+            """Return 403 FORBIDDEN status and sends back our 403.html page."""
             builder = network.ResponseBuilder()
             builder.set_status("403", "FORBIDDEN")
             builder.add_header("Connection", "close")
@@ -556,7 +575,7 @@ class network(metaclass=ABCMeta):
             return builder.build()
 
         def post_request(self, requested_file: str, data) -> bytes:
-            """Processing POST request."""
+            """Process POST request."""
             builder = network.ResponseBuilder()
             builder.set_status("200", "OK")
             builder.add_header("Connection", "close")
@@ -746,10 +765,10 @@ class network(metaclass=ABCMeta):
                                     {"type": "ready", "content": data["content"]},
                                 ),
                             )
-            for message in messages:
+            for server_message in messages:
                 with suppress(ValueError):
                     await asyncio.wait(
-                        [user.send(message) for user in utils.get_websockets()],
+                        [user.send(server_message) for user in utils.get_websockets()],
                     )
 
     @staticmethod
@@ -768,19 +787,28 @@ class network(metaclass=ABCMeta):
 class commands(metaclass=ABCMeta):
     """All the commands over here."""
 
-    class _CommandNotFoundError(Exception):
+    class CommandNotFoundError(Exception):
         """A signal means command not found."""
 
-    class _RedirectToAlias(Exception):
+        def __init__(self, command: str) -> None:
+            super().__init__(f"Command {command} not found.")
+
+    class RedirectToAlias(Exception):
         """A signal means executed command is defined in alias list."""
 
-    class _AsyncFunction(Exception):
-        """This is a async function, execute it using asyncio.run()"""
+        def __init__(self, command: str) -> None:
+            super().__init__(f"Command {command} is defined in alias.")
 
-    class _PrivateFunction(Exception):
-        """This command cannot call normally."""
+    class AsyncFunction(Exception):
+        """is a async function, execute it using asyncio.run()."""
 
-    command_access = {
+        def __init__(self, command: str) -> None:
+            super().__init__(f"Command {command} is defined in alias.")
+
+    class PrivateFunction(Exception):
+        """command cannot call normally."""
+
+    command_access: typing.ClassVar[dict[str, int]] = {
         "execute": 1,  # 执行命令
         "kick": 3,  # 踢人
         "stop": 4,  # 停服
@@ -796,8 +824,8 @@ class commands(metaclass=ABCMeta):
         "unban": 3,  # 解封
         "banlist": 3,  # 获取封禁列表
         "say": 4,  # 服务器说话
-    }  # 指令权限等级(服务器4级，管理3级，普通玩家2级，旁观1级
-    alias = {
+    }  # 指令权限等级(服务器4级, 管理3级, 普通玩家2级, 旁观1级
+    alias: typing.ClassVar[dict[str, str]] = {
         "clean": "clean_logs",
         "exit": "stop",
         "quit": "stop",
@@ -805,34 +833,17 @@ class commands(metaclass=ABCMeta):
         "shutdown": "stop",
         "list": "player_list",
     }
-    async_commands = [
+    async_commands: typing.ClassVar[list[str]] = [
         "say",
     ]
-    private_commands = [  # 设置内部方法 禁止调用
+    private_commands: typing.ClassVar[list[str]] = [  # 设置内部方法 禁止调用
         "execute",
         "call_async",
     ]
 
     @staticmethod
-    def execute(executer: str, command: str) -> typing.Optional[str]:
-        """Check access and parse, run commands."""
-        command = command.strip()
-        if not command:
-            return None
-        if executer == utils.query_config("SYSTEM_NAME"):
-            players_access: int = accesses["server"]
-        else:
-            players_access: int = utils.get_player(executer).access
-        compiled: list = command.split()  # compiled[0]主命令，compiled[1:]为参数
+    def parse_parameters(compiled: list) -> list:
         try:
-            if compiled[0] not in commands.command_access:
-                if compiled[0] in commands.alias:
-                    raise commands._RedirectToAlias(
-                        f"Command {compiled[0]} is defined in alias.",
-                    )
-                raise commands._CommandNotFoundError(
-                    f"Command {compiled[0]} not found.",
-                )
             param_count = utils.get_param_count(getattr(commands, compiled[0]))
             if param_count > 0:
                 param_types = utils.get_param_type(getattr(commands, compiled[0]))
@@ -849,6 +860,30 @@ class commands(metaclass=ABCMeta):
                             eval(utils.get_message("command.execute.parse_failed", 0)),
                         )
                         continue
+        finally:
+            return compiled
+
+    @staticmethod
+    def execute(executer: str, command: str) -> str | None:
+        """Check access and parse, run commands."""
+        command = command.strip()
+        if not command:
+            return None
+        if executer == utils.query_config("SYSTEM_NAME"):
+            players_access: int = accesses["server"]
+        else:
+            players_access: int = utils.get_player(executer).access
+        compiled: list = command.split()  # compiled[0]主命令, compiled[1:]为参数
+        try:
+            if compiled[0] not in commands.command_access:
+                if compiled[0] in commands.alias:
+                    raise commands.RedirectToAlias(
+                        compiled[0],
+                    )
+                raise commands.CommandNotFoundError(
+                    compiled[0],
+                )
+            compiled = commands.parse_parameters(compiled)
             run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))
             if players_access >= commands.command_access[compiled[0]]:
@@ -857,7 +892,7 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
-        except commands._CommandNotFoundError:
+        except commands.CommandNotFoundError:
             if (
                 commands.command_access.get(compiled[0]) is None
                 and commands.alias.get(compiled[0]) is None
@@ -879,7 +914,7 @@ class commands(metaclass=ABCMeta):
                             ),
                         )
                     return out
-        except commands._RedirectToAlias:
+        except commands.RedirectToAlias:
             compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.alias_execute", 0)))
@@ -889,14 +924,14 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
-        except commands._AsyncFunction:
+        except commands.AsyncFunction:
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
                 return asyncio.run(getattr(commands, compiled[0])(*compiled[1:]))
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)
             return out
-        except commands._PrivateFunction:
+        except commands.PrivateFunction:
             out = eval(utils.get_message("command.execute_private", 0))
             logger.warning(out)
             return out
@@ -909,10 +944,8 @@ class commands(metaclass=ABCMeta):
         return None
 
     @staticmethod
-    def call_async(
-        function: typing.Union[typing.Coroutine, typing.Callable],
-    ) -> typing.Any:
-        """Execute a async function"""
+    def call_async(function: typing.Coroutine | typing.Callable) -> typing.Any:
+        """Execute a async function."""
         if asyncio.iscoroutine(function):
             return asyncio.run(function)
         return asyncio.run(function())
@@ -933,7 +966,7 @@ class commands(metaclass=ABCMeta):
     @staticmethod
     def stop(delay: int = 0) -> str:
         """Stop game server."""
-        if delay > 4294967:  # 它是固定的值吗..?
+        if delay > int(utils.query_config("MAX_SLEEP_TIME")):  # 它是固定的值吗..?
             out = eval(utils.get_message("command.stop.delay_too_large", 0))
             logger.error(out)
             return out
@@ -954,7 +987,7 @@ class commands(metaclass=ABCMeta):
     @staticmethod
     def modify_access(command: str, new_access: int) -> str:
         """Modify command access."""
-        if new_access > 5:
+        if new_access > int(utils.query_config("MAX_ACCESS_LEVEL")):
             out = eval(utils.get_message("command.modify_access", 1))
             logger.error(out)
             return out
@@ -1018,8 +1051,7 @@ class commands(metaclass=ABCMeta):
             logger.info(out)
             utils.get_player(player_name).access = new_access
             return out
-        out = eval(utils.get_message("command.player_access", -3.5))
-        return out
+        return eval(utils.get_message("command.player_access", -3.5))
 
     @staticmethod
     def new_alias(command: str, alias: str) -> str:
@@ -1153,7 +1185,6 @@ except FileNotFoundError:
             """.strip(),
         )
 
-print(config)
 lang = {}
 _COMMENTING = False
 try:
@@ -1185,7 +1216,7 @@ try:
             if _loading == [""]:
                 continue
 
-            for punctuations in replace_punctuations.keys():
+            for punctuations in replace_punctuations:
                 _loading[2] = _loading[2].replace(
                     punctuations,
                     replace_punctuations.get(punctuations),
