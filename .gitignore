@@ -2,5 +2,6 @@ nginx.htaccess
 .*/
 .htaccess
 .pylintrc
-Games/*/logs/
-Games/*/__pycache__/
+/Games/*/logs/
+/Games/*/__pycache__/
+/Games/*/.*

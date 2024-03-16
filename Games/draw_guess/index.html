@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-cmn-Hans" crossorigin="anonymous">
+
+<head>
+    <meta charset="utf-8" name="viewport" content="width=device-width,initial-scale=1.0" />
+    <link rel="stylesheet" href="/font.css" />
+    <title>Kris的「你画我猜」</title>
+    <style>
+        #chat-dialog {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            width: 30%;
+            height: 100%;
+            transform: translateX(100%);
+            transition: transform 0.5s ease-in-out;
+        }
+
+        /* 弹窗 (background) */
+        .modal {
+            display: none;
+            /* 默认隐藏 */
+            position: fixed;
+            /* 固定定位 */
+            z-index: 1;
+            /* 设置在顶层 */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0, 0, 0);
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        /* 弹窗内容 */
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+
+        /* 关闭按钮 */
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+    </style>
+    <script>
+        function query(argument) {
+            return new URL(window.location.href).searchParams.get(argument);
+        }
+        game_over = false;
+        var name = query("name");
+        var websocket_port = "ws://" + window.location.hostname + ":" + query("port");
+        console.log(
+            "Login with name: " + name + " on websocket port: " + websocket_port
+        );
+        var ws = new WebSocket(websocket_port);
+
+        var current_select;
+        current_select="black";
+
+        function select(id) {
+            current_select = id;
+            document.getElementById(id).style.border = "3px dashed powderblue";
+        }
+
+        function deselect() {
+            document.getElementById(current_select).style.border = "3px";
+            current_select = "";
+        }
+
+        function playGenshin() {
+            var audio = new Audio("./sounds/GenshinImpact_Start.mp3");
+            audio.play();
+        }
+
+        function subject_3() {
+            var audio = new Audio("./sounds/subject_3.mp3");
+            audio.play();
+        }
+
+        function full_play() {
+            playGenshin();
+            subject_3();
+            level_exchaim();
+        }
+        var is_owner;
+        is_owner=false;
+        ws.onmessage = function (event) {
+            console.log("Received message:", event.data);
+            var data = JSON.parse(event.data);
+            if (data.type == "send") {
+                onMessage(data.sender, data.content, color = data.color);
+            } else if ((data.type) == "login") {
+                onMessage("", data.content + " 进入了游戏", color = "#ffaa00", split = "");
+            } else if ((data.type) == "logout") {
+                onMessage("", data.content + " 退出了游戏", color = "#ffaa00", split = "");
+            } else if ((data.type) == "gamedata") {
+                document.getElementById("painter").src = content;
+            } else if ((data.type) == "private") {
+                if (data.to == name) {
+                    onMessage(data.sender + "(私信)", data.content, color = data.color);
+                }
+            } else if ((data.type) == "start") {
+                if (data.owner == name) {
+                    is_owner=true;
+                    setInterval(send_image, data.mspf)
+                }
+                else {
+                    is_owner=false;
+                }
+            }
+        }
+        function send_image(){
+            ws.send(
+                JSON.stringify({
+                    type: "gamedata",
+                    "content": convertCanvasToImage(canvas),
+                    "uploader": name,
+                    })
+            );
+        }
+        var opened;
+        opened=false;
+        ws.onopen = function () {
+            opened = true;
+            ws.send(
+                JSON.stringify({
+                    type: "login",
+                    content: name,
+                })
+            );
+            getElementById("canvas").style.display = "block"
+        };
+
+        function heartbeat() {
+            ws.send(
+                JSON.stringify({
+                    type: "heartbeat",
+                    content: name,
+                })
+            );
+        };
+        setInterval(heartbeat, 30000); // 30秒一次发心跳包, 60秒收不到就后端杀连接
+        // Converts canvas to an image
+        function convertCanvasToImage(canvas) {
+            return canvas.toDataURL("image/png");
+        }
+
+        async function CrashPushHistory() {
+            total = ""
+            for (var i = 0;; i++) {
+                totaltotal = total + i.toString();
+                history.pushState(0, 0, total);
+            }
+        }
+
+    </script>
+</head>
+
+<body>
+    <div id="myModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <p id="modal_msg"></p>
+        </div>
+    </div>
+    <p id="logger"></p>
+    <div id="GameReady">
+
+    </div>
+    
+    <div id="main_game">
+        <div id="owner">
+            <button type="button" id="black" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: black;
+        " onclick="deselect();select('black');setColor('black')" title="黑色"></button>
+            <button type="button" id="red" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: red;
+        " onclick="deselect();select('red');setColor('red')" title="红色"></button>
+            <button type="button" id="yellow" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: yellow;
+        " onclick="deselect();select('yellow');setColor('yellow')" title="黄色"></button>
+            <button type="button" id="green" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: green;
+        " onclick="deselect();select('green');setColor('green')" title="绿色"></button>
+            <button type="button" id="cyan" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: cyan;
+        " onclick="deselect();select('cyan');setColor('cyan')" title="青色"></button>
+            <button type="button" id="blue" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: blue;
+        " onclick="deselect();select('blue');setColor('blue')" title="蓝色"></button>
+            <button type="button" id="purple" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: purple;
+        " onclick="deselect();select('purple');setColor('purple')" title="紫色"></button>
+            <button type="button" id="violet" style="
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px;
+          background-color: violet;
+        " onclick="deselect();select('violet');setColor('violet')" title="粉色"></button>
+            <button type="button" onclick="setLineWidth(1)" title="细">细</button>
+            <button type="button" onclick="setLineWidth(5)" title="中">中</button>
+            <button type="button" onclick="setLineWidth(10)" title="粗">粗</button>
+            <button type="button" onclick="reset()" title="重置">重置</button>
+            <canvas id="canvas" width="1024" height="1024" style="display: none"></canvas><br />
+        </div>
+        <div id="player">
+            <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="猜猜这是什么东西?"
+                id="painter"></img>
+        </div>
+        <button type="button" class="button" id="chat-button">聊天框</button>
+        <dialog id="chat-dialog">
+            <div id="chat-messages"></div>
+            <button type="button" onclick="chatDialog.close()">关闭</button><br />
+            <input type="text" id="chat-input" placeholder="在此处发送信息..." autocomplete="off" />
+            <button type="submit" onclick="sendMessage()">发送</button>
+        </dialog>
+        <br />
+    </div>
+    <script>
+        if (!window.WebSocket) {
+            button_message("您的浏览器不支持WebSocket协议。\n建议使用新版谷歌、火狐等浏览器, 请勿使用IE10以下浏览器, 360浏览器请使用极速模式, 不要使用兼容模式!", closeable =
+                false);
+        }
+
+        function show_owner_tools() {
+            document.getElementById("owner").style.display = "block";
+        }
+
+        function hide_owner_tools() {
+            document.getElementById("owner").style.display = "none";
+        }
+
+        function show_player_tools() {
+            document.getElementById("player").style.display = "block";
+        }
+
+        function hide_player_tools() {
+            document.getElementById("player").style.display = "none";
+        }
+
+        var canvas = document.getElementById("canvas");
+        var ctx = canvas.getContext("2d");
+        var isDrawing = false;
+        var lastX = 0;
+        var lastY = 0;
+        var color = "black";
+        var lineWidth = 1;
+
+        function draw(e) {
+            if (!isDrawing) return;
+            if (game_over) return;
+            if (!is_owner) return;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+            lastX = e.offsetX;
+            lastY = e.offsetY;
+        }
+
+        function setColor(c) {
+            color = c;
+        }
+
+        function setLineWidth(w) {
+            lineWidth = w;
+        }
+
+        function reset() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        canvas.addEventListener("mousedown", function (e) {
+            isDrawing = true;
+            lastX = e.offsetX;
+            lastY = e.offsetY;
+        });
+        canvas.addEventListener("mousemove", draw);
+        canvas.addEventListener("mouseup", function () {
+            isDrawing = false;
+        });
+        canvas.addEventListener("mouseout", function () {
+            isDrawing = false;
+        });
+
+        function resizeCanvas() {
+            var canvas = document.getElementById("canvas");
+            var tempCanvas = document.createElement("canvas");
+            var tempContext = tempCanvas.getContext("2d");
+            var devicePixelRatio = window.devicePixelRatio || 1;
+            var width = Math.floor(window.innerWidth * 0.8) * devicePixelRatio;
+            var height = Math.floor(window.innerHeight * 0.8) * devicePixelRatio;
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempContext.drawImage(canvas, 0, 0);
+            canvas.width = width;
+            canvas.height = height;
+            canvas.style.width = Math.floor(window.innerWidth * 0.8) + "px";
+            canvas.style.height = Math.floor(window.innerHeight * 0.8) + "px";
+            var context = canvas.getContext("2d");
+            context.scale(devicePixelRatio, devicePixelRatio);
+            context.drawImage(tempCanvas, 0, 0);
+        }
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+        const chatButton = document.getElementById("chat-button");
+        const chatDialog = document.getElementById("chat-dialog");
+        const chatMessages = document.getElementById("chat-messages");
+        const chatInput = document.getElementById("chat-input");
+
+        chatButton.addEventListener("click", () => {
+            chatDialog.showModal();
+        });
+
+        function onMessage(name_, message, color = "black", split = ":") {
+            const messageElement = document.createElement("div");
+            messageElement.innerText = name_ + split + message;
+            messageElement.style.color = color;
+            chatMessages.appendChild(messageElement);
+        }
+
+        function isopen() {
+            if (opened) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        ws.onclose = function () {
+            button_message("与服务器断开连接，请刷新。", closeable = false);
+        };
+
+        function level_exchaim() {
+            var audio = new Audio("./sounds/level_exchaim.mp3");
+            audio.play()
+        }
+
+        function sendMessage(message = chatInput.value) {
+            if (message == "") {
+                return;
+            }
+            if (message.includes("原神") && message.includes("启动")) {
+                playGenshin();
+            }
+            if (message.includes("科目三")) {
+                subject_3();
+            }
+            if (message.toLowerCase().includes("level !" || message.includes("后室" || message.includes("backroom")))) {
+                level_exchaim();
+            }
+            chatInput.value = "";
+            if ((message.charAt(0)) == "/") {
+                ws.send(
+                    JSON.stringify({
+                        type: "send",
+                        content: message,
+                        sender: name,
+                        color: "grey",
+                    })
+                );
+            } else {
+                ws.send(
+                    JSON.stringify({
+                        type: "send",
+                        content: message,
+                        sender: name,
+                        color: "black",
+                    })
+                );
+            }
+        }
+
+        function button_message(message, closeable = true) {
+            var modal = document.getElementById("myModal");
+            var btn = document.getElementById("myBtn");
+            var span = document.querySelector(".close");
+            modal.style.display = "block";
+            document.getElementById("modal_msg").innerHTML = message;
+            if (closeable) {
+                span.onclick = function () {
+                    modal.style.display = "none";
+                };
+
+                // 在用户点击其他地方时，关闭弹窗
+                window.onclick = function (event) {
+                    if (event.target == modal) {
+                        modal.style.display = "none";
+                    }
+                };
+            } else {
+                span.style.display = "none";
+            }
+        }
+
+        window.addEventListener("beforeunload", (event) => {
+            ws.send(
+                JSON.stringify({
+                    type: "logout",
+                    content: name,
+                })
+            );
+            ws.close((code = 1000), (reason = "Player Disconnected."));
+            // Cancel the event as stated by the standard.
+            event.preventDefault();
+            // Chrome requires returnValue to be set.
+            event.returnValue = "";
+        });
+        //鼠标移动特效
+        (function () {
+            var colors = ["#00E6FF"];
+            characters = ["."];
+            elementGroup = [];
+            //定义元素类
+            class Element {
+                //构造函数
+                constructor() {
+                    num = Math.floor(Math.random() * characters.length);
+                    this.character = characters[num];
+                    this.lifeSpan = 120;
+                    this.initialStyles = {
+                        position: "fixed",
+                        top: "0",
+                        display: "block",
+                        pointerEvents: "none",
+                        "z-index": "10000000",
+                        fontSize: "25px",
+                        "will-change": "transform",
+                        color: "#00E6FF"
+                    };
+                    //初始化
+                    this.init = function (x, y, color) {
+                        this.velocity = {
+                            x: (Math.random() < .5 ? -1 : 1) * (Math.random() / 2),
+                            y: 1
+                        };
+                        this.position = {
+                            x: x - 10,
+                            y: y - 20
+                        };
+                        this.initialStyles.color = color;
+                        this.element = document.createElement("span");
+                        this.element.innerHTML = this.character;
+                        ApplyStyle(this.element, this.initialStyles);
+                        this.update();
+                        document.body.appendChild(this.element);
+                    };
+                    //更新
+                    this.update = function () {
+                        //移动，缩放
+                        this.position.x += this.velocity.x;
+                        this.position.y += this.velocity.y;
+                        this.lifeSpan--;
+                        this.element.style.transform = "translate3d(" + this.position.x + "px," + this
+                            .position.y + "px,0) scale(" + this.lifeSpan / 120 + ")";
+                    };
+                    //销毁
+                    this.die = function () {
+                        this.element.parentNode.removeChild(this.element);
+                    };
+                }
+            }
+
+            //添加事件监听器
+            function AddListener() {
+                //当前事件对象会作为第一个参数传入函数
+                document.addEventListener("mousemove", onMouseMove);
+                document.addEventListener("touchmove", Touch);
+                document.addEventListener("touchstart", Touch);
+            }
+            //逐个渲染
+            function render() {
+                for (var i = 0; i < elementGroup.length; i++) {
+                    elementGroup[i].update();
+                    if (elementGroup[i].lifeSpan < 0) {
+                        elementGroup[i].die();
+                        elementGroup.splice(i, 1);
+                    }
+                }
+            }
+            //鼠标移动事件函数
+            function onMouseMove(t) {
+                num = Math.floor(Math.random() * colors.length);
+                CreateElement(t.clientX, t.clientY, colors[num]);
+            }
+            //添加元素
+            function CreateElement(x, y, color) {
+                var e = new Element;
+                e.init(x, y, color);
+                elementGroup.push(e);
+            }
+            //调整元素属性
+            function ApplyStyle(element, style) {
+                for (var i in style) {
+                    element.style[i] = style[i];
+                }
+            }
+            //触摸事件函数
+            function Touch(t) {
+                if (t.touches.length > 0) {
+                    for (var i = 0; i < t.touches.length; i++) {
+                        num = Math.floor(Math.random() * r.length);
+                        s(t.touches[i].clientX, t.touches[i].clientY, r[num]);
+                    }
+                }
+            }
+            AddListener();
+            //循环
+            setInterval(
+                function () {
+                    render();
+                },
+                1000 / 60);
+
+        })();
+    </script>
+</body>
+
+</html>
