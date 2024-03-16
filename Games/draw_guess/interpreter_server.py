@@ -1256,7 +1256,7 @@ except FileNotFoundError:
 logger.debug(eval(utils.get_message("root.loaded_bans", 0)))
 
 
-def run(enabled_shell=True, override_sys_excepthook=True):
+def run(enabled_shell: bool = True, override_sys_excepthook: bool = True):
     """Run all server."""
     logger.debug(eval(utils.get_message("root.run", 0)))
     try:
