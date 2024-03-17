@@ -8,17 +8,18 @@ import functools
 import inspect
 import json
 import os
-import random
 import re
+import secrets
 import socket
 import ssl
 import sys
 import threading
 import time
 import typing
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 from contextlib import suppress
 from mimetypes import types_map as mime_types
+from pathlib import Path
 
 import websockets
 from colorama import Fore, init
@@ -62,8 +63,9 @@ class utils(metaclass=ABCMeta):
     """A class to encapsulates codes."""
 
     @staticmethod
+    @abstractmethod
     @functools.cache
-    def get_message(eqalname: str, value: int | float) -> str:
+    def get_message(eqalname: str, value: float) -> str:
         """Query message in language file."""
         try:
             return str(lang[eqalname + "." + str(value)]).strip()
@@ -71,11 +73,13 @@ class utils(metaclass=ABCMeta):
             return f"'未定义的文本: {eqalname}'"
 
     @staticmethod
+    @abstractmethod
     def get_players() -> list:
         """Get all player's name."""
         return [iter_player.get_name() for iter_player in players]
 
     @staticmethod
+    @abstractmethod
     def get_player(name: str) -> player:
         """Get player object by name."""
         if name == utils.query_config("SYSTEM_NAME"):
@@ -92,11 +96,13 @@ class utils(metaclass=ABCMeta):
         )
 
     @staticmethod
+    @abstractmethod
     def delete_player(name: str) -> None:
         """Remove a player from players list."""
         players.remove(utils.get_player(name))
 
     @staticmethod
+    @abstractmethod
     def login_player(name: str, websocket) -> player:
         """Add 1 player to players list."""
         logined_player = player(name, websocket)
@@ -104,6 +110,7 @@ class utils(metaclass=ABCMeta):
         return logined_player
 
     @staticmethod
+    @abstractmethod
     def get_websocket(name: str):
         """Get player's websocket object."""
         return next(
@@ -117,11 +124,13 @@ class utils(metaclass=ABCMeta):
         )
 
     @staticmethod
+    @abstractmethod
     def get_websockets() -> list:
         """Get all the player's websocket object."""
         return [iter_player.websocket for iter_player in players]
 
     @staticmethod
+    @abstractmethod
     @functools.cache
     def query_config(key: str) -> str:
         """Query config in config file."""
@@ -131,6 +140,7 @@ class utils(metaclass=ABCMeta):
             return f"'未定义的配置项: {key}'"
 
     @staticmethod
+    @abstractmethod
     def reverse_replace(string: str, old: str, new: str, max_count: int = -1) -> str:
         """Reverse string and replace string."""
         # 从后往前查找旧字符串
@@ -154,6 +164,7 @@ class utils(metaclass=ABCMeta):
     placeholder_replacer = re.compile("{(.*?)}")
 
     @staticmethod
+    @abstractmethod
     def replace_escape_string(string: str) -> str:
         """Replace escape chars.."""
         string = string.replace("\\n", chr(10))
@@ -166,6 +177,7 @@ class utils(metaclass=ABCMeta):
         return string.replace("\\r", chr(13))
 
     @staticmethod
+    @abstractmethod
     def parse(string: str, **variables: typing.Any) -> str:
         """Parse f-string."""
         try:
@@ -182,6 +194,7 @@ class utils(metaclass=ABCMeta):
             return utils.replace_escape_string(string)
 
     @staticmethod
+    @abstractmethod
     def get_param_type(function: typing.Callable) -> list:
         """Get required type of parameter."""
         return [
@@ -190,6 +203,7 @@ class utils(metaclass=ABCMeta):
         ]
 
     @staticmethod
+    @abstractmethod
     def get_param_count(function: typing.Callable) -> int:
         """Get required count of parameter."""
         return len(inspect.signature(function).parameters.items())
@@ -199,6 +213,7 @@ class game(metaclass=ABCMeta):
     """A class to processing game's all event."""
 
     @staticmethod
+    @abstractmethod
     def command_interpreter(prompt: str) -> typing.NoReturn:
         """Command interpreter."""
         while True:
@@ -239,12 +254,14 @@ class game(metaclass=ABCMeta):
                 )
 
     @staticmethod
+    @abstractmethod
     def stop(exit_value: int = 0) -> typing.NoReturn:
         """Stop server normally."""
         logger.info(eval(utils.get_message("game.command_interpreter.server_stop", 0)))
         os._exit(exit_value)
 
     @staticmethod
+    @abstractmethod
     def error_stop(error_level: int = -1) -> typing.NoReturn:
         """Stop server when error."""
         logger.error(eval(utils.get_message("game.command_interpreter.error_stop", 0)))
@@ -257,12 +274,16 @@ class network(metaclass=ABCMeta):
     accept_players = 0
 
     @staticmethod
+    @abstractmethod
     def recv(client_sock: socket.socket) -> list:
         """Non-Blocking recv socket data."""
-        buffer = [client_sock.recv(1024)]
+        try:
+            buffer = [client_sock.recv(1024)]
+        except OSError:
+            return []
         if buffer[0] in (0, -1):
             return []
-        client_sock.setblocking(0)
+        client_sock.setblocking(False)
         while True:
             try:
                 data = client_sock.recv(1024)
@@ -271,7 +292,9 @@ class network(metaclass=ABCMeta):
                 break
             except ConnectionResetError:  # ConnectionResetError: 连接被关闭
                 break
-        client_sock.setblocking(1)
+            except OSError:
+                break
+        client_sock.setblocking(True)
         return buffer
 
     class ResponseBuilder:
@@ -372,7 +395,7 @@ class network(metaclass=ABCMeta):
             self.sock.bind((self.host, self.port))
             self.sock.listen(int(utils.query_config("LISTENS_COUNT")))
             self.sock.settimeout(int(utils.query_config("HTTP_TIMEOUT")))
-            self.sock.setblocking(0)
+            self.sock.setblocking(True)
             logger.debug(eval(utils.get_message("network.create_socket", 0)))
 
         def change_dir(self) -> None:
@@ -386,12 +409,15 @@ class network(metaclass=ABCMeta):
         ) -> None:
             """Process response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
-
-            if time.time() - self.request_times.get(client_addr[0], 0) <= float(
-                utils.query_config("DDOS_DETECT_TIME")
+            # TODO(Kris): FIXME: 过度的防DDOS逻辑
+            if self.request_times.get(
+                client_addr[0],
+                float("inf"),
+            ) - time.time() <= float(
+                utils.query_config("DDOS_DETECT_TIME"),
             ):
                 if self.warnlist.count(client_addr[0]) >= int(
-                    utils.query_config("RAISE_DDOS_ALARM")
+                    utils.query_config("RAISE_DDOS_ALARM"),
                 ):
                     logger.warning(
                         eval(utils.get_message("network.http_server.ddos", 0)),
@@ -403,12 +429,14 @@ class network(metaclass=ABCMeta):
                         if warning != client_addr[0]
                     ]
                     return
-                logger.info(
-                    eval(utils.get_message("network.http_server.detect_ddos", 0)),
-                )
+                if client_addr[0] not in self.warnlist:
+                    logger.info(
+                        eval(utils.get_message("network.http_server.detect_ddos", 0)),
+                    )
                 self.warnlist.append(client_addr[0])
             elif time.time() - self.request_times.get(
-                client_addr[0], time.time()
+                client_addr[0],
+                time.time(),
             ) >= int(utils.query_config("STOP_DDOS_ALARM")):
                 logger.info(
                     eval(utils.get_message("network.http_server.wrong_detect_ddos", 0)),
@@ -435,7 +463,8 @@ class network(metaclass=ABCMeta):
         def accept(self) -> typing.NoReturn:
             """Accept request forever."""
             while True:
-                self.create_conn()
+                with suppress(OSError):
+                    self.create_conn()
 
         def create_conn(self) -> None:
             """Create a connection."""
@@ -467,7 +496,7 @@ class network(metaclass=ABCMeta):
         def should_return_binary(self, filename: str) -> bool:
             """Check file is binary."""
             logger.debug(eval(utils.get_message("network.http_server.check_binary", 0)))
-            with open(filename, "rb") as file:
+            with Path().open(filename, "rb") as file:
                 logger.debug(
                     eval(
                         utils.get_message("network.http_server.file_contents", 0),
@@ -488,7 +517,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0)),
             )
-            with open(filename, "rb") as file:
+            with Path().open(filename, "rb") as file:
                 return file.read()
 
         def get_file_contents(self, filename: str) -> str:
@@ -496,7 +525,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0)),
             )
-            with open(filename, encoding="utf-8") as file:
+            with Path().open(filename, encoding="utf-8") as file:
                 return file.read()
 
         def get_request(self, requested_file: str, data) -> bytes:
@@ -508,7 +537,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.requested_file", 0)),
             )
-            if not os.path.exists(requested_file):
+            if not Path().exists(requested_file):
                 return self.resource_not_found()
             if not self.has_permission_other(requested_file):
                 return self.resource_forbidden()
@@ -530,21 +559,6 @@ class network(metaclass=ABCMeta):
                 )
                 + "; charset=utf8",
             )
-            builder.add_header(
-                "Date",
-                time.strftime(
-                    "%a, %d %b %Y %H:%M:%S GMT",
-                    time.localtime(os.path.getctime(requested_file)),
-                ),
-            )
-            builder.add_header(
-                "Last-Modified",
-                time.strftime(
-                    "%a, %d %b %Y %H:%M:%S GMT",
-                    time.localtime(os.path.getmtime(requested_file)),
-                ),
-            )
-
             return builder.build()
 
         def method_not_allowed(self) -> bytes:
@@ -590,6 +604,7 @@ class network(metaclass=ABCMeta):
             return builder.build()
 
     @staticmethod
+    @abstractmethod
     async def ws_server(websocket, path) -> typing.NoReturn:
         """Websocket server."""
         current_owner = ""
@@ -738,33 +753,32 @@ class network(metaclass=ABCMeta):
                             eval(utils.get_message("network.player.keep_alive", 0)),
                         )
                         continue
-                elif data["type"] == "ready":
-                    if len(players) != 0:
-                        network.accept_players += 1
-                        if network.accept_players == len(players) >= MIN_PLAYERS:
-                            messages.append(
-                                json.dumps(
-                                    {
-                                        "type": "start",
-                                        "content": "game_start",
-                                        "owner": random.choice(utils.get_players()),
-                                        "mspf": utils.query_config(
-                                            "MSPF",
-                                        ),  # Milisecond per frame
-                                    },
-                                ),
-                            )
+                elif data["type"] == "ready" and len(players) != 0:
+                    network.accept_players += 1
+                    if network.accept_players == len(players) >= MIN_PLAYERS:
+                        messages.append(
+                            json.dumps(
+                                {
+                                    "type": "start",
+                                    "content": "game_start",
+                                    "owner": secrets.choice(utils.get_players()),
+                                    "mspf": utils.query_config(
+                                        "MSPF",
+                                    ),  # Milisecond per frame
+                                },
+                            ),
+                        )
 
-                            logger.info(eval(utils.get_message("game.game_start", 0)))
-                        else:
-                            logger.info(
-                                eval(utils.get_message("network.player.ready", 0)),
-                            )
-                            message.append(
-                                json.dumps(
-                                    {"type": "ready", "content": data["content"]},
-                                ),
-                            )
+                        logger.info(eval(utils.get_message("game.game_start", 0)))
+                    else:
+                        logger.info(
+                            eval(utils.get_message("network.player.ready", 0)),
+                        )
+                        message.append(
+                            json.dumps(
+                                {"type": "ready", "content": data["content"]},
+                            ),
+                        )
             for server_message in messages:
                 with suppress(ValueError):
                     await asyncio.wait(
@@ -772,6 +786,7 @@ class network(metaclass=ABCMeta):
                     )
 
     @staticmethod
+    @abstractmethod
     def run_ws_server() -> typing.NoReturn:
         """Run websocket server."""
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -842,8 +857,9 @@ class commands(metaclass=ABCMeta):
     ]
 
     @staticmethod
+    @abstractmethod
     def parse_parameters(compiled: list) -> list:
-        try:
+        with suppress(AttributeError):
             param_count = utils.get_param_count(getattr(commands, compiled[0]))
             if param_count > 0:
                 param_types = utils.get_param_type(getattr(commands, compiled[0]))
@@ -860,10 +876,10 @@ class commands(metaclass=ABCMeta):
                             eval(utils.get_message("command.execute.parse_failed", 0)),
                         )
                         continue
-        finally:
-            return compiled
+        return compiled
 
     @staticmethod
+    @abstractmethod
     def execute(executer: str, command: str) -> str | None:
         """Check access and parse, run commands."""
         command = command.strip()
@@ -896,24 +912,24 @@ class commands(metaclass=ABCMeta):
             if (
                 commands.command_access.get(compiled[0]) is None
                 and commands.alias.get(compiled[0]) is None
+                and command != ""
             ):
-                if command != "":
-                    out = eval(utils.get_message("command.execute.not_found", 0))
-                    logger.error(out)
-                    detect = process.extractOne(
-                        command,
-                        list(commands.command_access.keys()),
+                out = eval(utils.get_message("command.execute.not_found", 0))
+                logger.error(out)
+                detect = process.extractOne(
+                    command,
+                    list(commands.command_access.keys()),
+                )
+                if detect[1] >= int(utils.query_config("MATCH_THRESHOULD")):
+                    out += eval(
+                        utils.get_message("command.execute.syntax_detect", 0),
                     )
-                    if detect[1] >= 85:
-                        out += eval(
+                    logger.info(
+                        eval(
                             utils.get_message("command.execute.syntax_detect", 0),
-                        )
-                        logger.info(
-                            eval(
-                                utils.get_message("command.execute.syntax_detect", 0),
-                            ),
-                        )
-                    return out
+                        ),
+                    )
+                return out
         except commands.RedirectToAlias:
             compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
@@ -944,6 +960,7 @@ class commands(metaclass=ABCMeta):
         return None
 
     @staticmethod
+    @abstractmethod
     def call_async(function: typing.Coroutine | typing.Callable) -> typing.Any:
         """Execute a async function."""
         if asyncio.iscoroutine(function):
@@ -951,6 +968,7 @@ class commands(metaclass=ABCMeta):
         return asyncio.run(function())
 
     @staticmethod
+    @abstractmethod
     def kick(player_name: str) -> str:
         """Kick a player."""
         if player_name in utils.get_players():
@@ -964,6 +982,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def stop(delay: int = 0) -> str:
         """Stop game server."""
         if delay > int(utils.query_config("MAX_SLEEP_TIME")):  # 它是固定的值吗..?
@@ -985,6 +1004,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def modify_access(command: str, new_access: int) -> str:
         """Modify command access."""
         if new_access > int(utils.query_config("MAX_ACCESS_LEVEL")):
@@ -1001,6 +1021,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def get_commands() -> str:
         """Get command list."""
         commands_list = [
@@ -1015,15 +1036,16 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def clean_logs(folder_path: str = "./logs/") -> str:
         """Remove all logs."""
         out = eval(utils.get_message("command.clean_logs", 0))
         logger.info(out)
         for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)  # 获取文件路径
-            if os.path.isfile(file_path):  # 判断是否为文件
+            file_path = Path().join(folder_path, filename)  # 获取文件路径
+            if Path().isfile(file_path):  # 判断是否为文件
                 try:
-                    os.remove(file_path)  # 删除文件
+                    Path().remove(file_path)  # 删除文件
                 except PermissionError:
                     new_info = eval(utils.get_message("command.clean_logs", -1))
                     logger.warning(new_info)
@@ -1031,6 +1053,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def player_list() -> str:
         """Get player's list."""
         lists = utils.get_players()
@@ -1039,6 +1062,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def player_access(player_name: str, access_name: str) -> str:
         """Change player's access."""
         if player_name in utils.get_players():
@@ -1054,6 +1078,7 @@ class commands(metaclass=ABCMeta):
         return eval(utils.get_message("command.player_access", -3.5))
 
     @staticmethod
+    @abstractmethod
     def new_alias(command: str, alias: str) -> str:
         """Add a alias."""
         if (
@@ -1069,6 +1094,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def del_alias(alias: str) -> str:
         """Remove a alias."""
         if commands.alias.get(alias) is None:
@@ -1081,6 +1107,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def get_alias() -> str:
         """Get alias's list."""
         all_alias = list(commands.alias.keys())
@@ -1089,6 +1116,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def ban(player_name: str) -> str:
         """Ban a player, it never join the game."""
         if not player_name:
@@ -1101,7 +1129,7 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("network.player.duplicate_ban", 0))
             logger.error(out)
             return out
-        with open("banlist.txt", "a", encoding="utf-8") as ban_file:
+        with Path().open("banlist.txt", "a", encoding="utf-8") as ban_file:
             ban_file.write(player_name + "\n")
         banlist.append(player_name)
         commands.kick(player_name)
@@ -1110,6 +1138,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def unban(player_name: str) -> str:
         """Unban a player."""
         if not player_name:
@@ -1120,9 +1149,9 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("network.player.never_ban", 0))
             logger.warning(out)
             return out
-        with open("banlist.txt", encoding="utf-8") as file:
+        with Path().open("banlist.txt", encoding="utf-8") as file:
             lines = file.readlines()
-        with open("banlist.txt", "w", encoding="utf-8") as write_file:
+        with Path().open("banlist.txt", "w", encoding="utf-8") as write_file:
             for file_line in lines:
                 if file_line.strip() != player_name:
                     write_file.write(file_line)
@@ -1132,6 +1161,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     def banlist() -> str:
         """Get banned player's list."""
         out = eval(utils.get_message("command.banlist", 0))
@@ -1139,6 +1169,7 @@ class commands(metaclass=ABCMeta):
         return out
 
     @staticmethod
+    @abstractmethod
     async def say(message) -> None:
         """Say a message to websocket server."""
         await asyncio.wait(
@@ -1160,14 +1191,14 @@ class commands(metaclass=ABCMeta):
 config = {}
 
 try:
-    with open("./config/config.cfg", encoding="utf-8") as f:
+    with Path().open("./config/config.cfg", encoding="utf-8") as f:
         for line in f.readlines():
             config_dict = line.split("//")[0].strip().split(" = ")
             config[config_dict[0]] = config_dict[1]
 except FileNotFoundError:
-    if not os.path.exists("./config/"):
-        os.mkdir("./config/")
-    with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
+    if not Path().exists("./config/"):
+        Path().mkdir("./config/")
+    with Path().open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
         f.write(
             """
                 HTTP_PORT = 3872
@@ -1188,7 +1219,7 @@ except FileNotFoundError:
 lang = {}
 _COMMENTING = False
 try:
-    with open(
+    with Path().open(
         "./lang/" + utils.query_config("LANGUAGE") + ".lang",
         encoding="utf-8",
     ) as f:
@@ -1223,8 +1254,8 @@ try:
                 )
             lang[f"{_loading[0]}.{_loading[1]}"] = _loading[2]
 except FileNotFoundError:
-    if not os.path.exists("./lang/"):
-        os.mkdir("./lang/")
+    if not Path().exists("./lang/"):
+        Path().mkdir("./lang/")
     logger.critical("语言文件不存在. ")
     os._exit(0)
 
@@ -1232,7 +1263,7 @@ logger.debug(eval(utils.get_message("root.loaded_language", 0)))
 
 try:
     for _plugin in os.listdir("./plugins/"):
-        with open("./plugins/" + _plugin, encoding="utf-8") as f:
+        with Path().open("./plugins/" + _plugin, encoding="utf-8") as f:
             try:
                 exec(f.read())
             except Exception as e:
@@ -1241,22 +1272,25 @@ try:
                 game.error_stop()
         logger.debug(eval(utils.get_message("root.loaded", 0)))
 except FileNotFoundError:
-    if not os.path.exists("./plugins/"):
-        os.mkdir("./plugins/")
+    if not Path().exists("./plugins/"):
+        Path().mkdir("./plugins/")
 logger.debug(eval(utils.get_message("root.loaded_plugins", 0)))
 
 try:
-    with open("banlist.txt", encoding="utf-8") as f:
+    with Path().open("banlist.txt", encoding="utf-8") as f:
         banlist = [ban.strip() for ban in f.readlines()]
 except FileNotFoundError:
-    with open("banlist.txt", "w", encoding="utf-8") as f:
+    with Path().open("banlist.txt", "w", encoding="utf-8") as f:
         banlist = []
         f.write("")
 
 logger.debug(eval(utils.get_message("root.loaded_bans", 0)))
 
 
-def run(enabled_shell: bool = True, override_sys_excepthook: bool = True):
+def run(
+    enabled_shell: bool = True,
+    override_sys_excepthook: bool = True,
+) -> typing.NoReturn:
     """Run all server."""
     logger.debug(eval(utils.get_message("root.run", 0)))
     try:

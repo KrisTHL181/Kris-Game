@@ -1,41 +1,54 @@
-"""
-Test tool: HTTP DDOS
+"""Test tool: HTTP DDOS
 Arg 1: IP
 Arg 2: Port
 """
 
-from contextlib import suppress
-from threading import Thread
 import socket
 import time
+from contextlib import suppress
+from threading import Thread
 
-SEND_COUNT = 0
+from loguru import logger
+
+send_count = 0
 
 
-def send_request(ip, port, wait_time=0):
+def send_request(ip: str, port: int, wait_time: int = 0) -> None:
     """发送一次HTTP/1.1请求."""
-    global SEND_COUNT
+    global send_count
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.connect((ip, port))
     except ConnectionRefusedError:
-        print("Connection Failed.")
+        logger.error("Connection Failed.")
         return
-    sock.setblocking(False)
-    with suppress(ConnectionAbortedError):
+    sock.setblocking(0)
+    try:
         sock.send(b"GET / HTTP/1.1\r\n")
-    print(f"Sended Request {SEND_COUNT} / inf")
-    SEND_COUNT += 1
+    except ConnectionAbortedError:
+        logger.warning("Connection Aborted.")
+        return
+    logger.info(f"Sended Request {send_count} / inf")
+    send_count += 1
     time.sleep(wait_time)
 
 
-def packet(ip, port):
-    """发送一次数据包并记录时间"""
-    LAST_TIME = time.perf_counter()
+def packet(ip: str, port: int) -> None:
+    """发送一次数据包并记录时间."""
+    last_time = time.perf_counter()
     send_request(ip, port)
-    LAST_PACKET_TIME = time.perf_counter()
-    print(f"Packet Time: {round(LAST_PACKET_TIME - LAST_TIME, 3)}")
+    last_packet_time = time.perf_counter()
+    logger.info(f"Packet Time: {round(last_packet_time - last_time, 3)}")
+
 
 if __name__ == "__main__":
     while True:
-        Thread(target=packet, args=("127.0.0.1", 3872)).start()
+        threads = []
+        for _ in range(32):
+            threads.append(
+                Thread(target=packet, args=("127.0.0.1", 3872)),
+            )
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()

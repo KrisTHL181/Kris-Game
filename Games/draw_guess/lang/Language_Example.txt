@@ -8,6 +8,6 @@ Line 1: "Be replaced punctuation":"Replaced punctuation" # Punctuation replace
 Line 2: Function name,return value,text(allow 'f"{something}"' expression) # Replace language
 Line ... # omiting...
 Comment Line: --Comments: start # Comments Start
-here is comment! # Comment
+here is multi line comment! # Comment
 --Comments: end # Comment End
 
