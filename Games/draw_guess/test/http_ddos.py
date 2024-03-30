@@ -5,7 +5,6 @@ Arg 2: Port
 
 import socket
 import time
-from contextlib import suppress
 from threading import Thread
 
 from loguru import logger

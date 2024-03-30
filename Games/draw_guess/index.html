@@ -82,23 +82,6 @@
             document.getElementById(current_select).style.border = "3px";
             current_select = "";
         }
-
-        function playGenshin() {
-            var audio = new Audio("./sounds/GenshinImpact_Start.mp3");
-            audio.play();
-        }
-
-        function subject_3() {
-            var audio = new Audio("./sounds/subject_3.mp3");
-            audio.play();
-        }
-
-        function full_play() {
-            playGenshin();
-            subject_3();
-            level_exchaim();
-        }
-        var is_owner;
         is_owner=false;
         ws.onmessage = function (event) {
             console.log("Received message:", event.data);
@@ -110,7 +93,7 @@
             } else if ((data.type) == "logout") {
                 onMessage("", data.content + " 退出了游戏", color = "#ffaa00", split = "");
             } else if ((data.type) == "gamedata") {
-                document.getElementById("painter").src = content;
+                document.getElementById("painter").src = data.content;
             } else if ((data.type) == "private") {
                 if (data.to == name) {
                     onMessage(data.sender + "(私信)", data.content, color = data.color);
@@ -387,15 +370,6 @@
         function sendMessage(message = chatInput.value) {
             if (message == "") {
                 return;
-            }
-            if (message.includes("原神") && message.includes("启动")) {
-                playGenshin();
-            }
-            if (message.includes("科目三")) {
-                subject_3();
-            }
-            if (message.toLowerCase().includes("level !" || message.includes("后室" || message.includes("backroom")))) {
-                level_exchaim();
             }
             chatInput.value = "";
             if ((message.charAt(0)) == "/") {

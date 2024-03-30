@@ -19,13 +19,15 @@ import typing
 from abc import ABCMeta, abstractmethod
 from contextlib import suppress
 from mimetypes import types_map as mime_types
-from pathlib import Path
 
 import websockets
 from colorama import Fore, init
 from fuzzywuzzy import process
 from loguru import logger
 from rich.traceback import install as install_rich_traceback
+
+# from pathlib import Path TODO: open to path
+
 
 init(autoreset=True)
 logger.remove()
@@ -184,13 +186,10 @@ class utils(metaclass=ABCMeta):
             return utils.replace_escape_string(string.format(**variables))
         except KeyError:
             for placeholder in re.findall(utils.placeholder_replacer, string):
-                try:
-                    string = string.replace(
-                        f"{{{placeholder}}}",
-                        str(variables[placeholder]),
-                    )
-                except KeyError:
-                    continue
+                string = string.replace(
+                    f"{{{placeholder}}}",
+                    str(variables.get(placeholder, placeholder)),
+                )
             return utils.replace_escape_string(string)
 
     @staticmethod
@@ -376,7 +375,7 @@ class network(metaclass=ABCMeta):
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM),
                         server_side=True,
                     )
-                except (ssl.SSLError, ValueError):
+                except ssl.SSLError:
                     logger.warning(
                         eval(utils.get_message("network.https_server.ssl_error", 0)),
                     )
@@ -409,7 +408,6 @@ class network(metaclass=ABCMeta):
         ) -> None:
             """Process response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
-            # TODO(Kris): FIXME: 过度的防DDOS逻辑
             if self.request_times.get(
                 client_addr[0],
                 float("inf"),
@@ -496,7 +494,7 @@ class network(metaclass=ABCMeta):
         def should_return_binary(self, filename: str) -> bool:
             """Check file is binary."""
             logger.debug(eval(utils.get_message("network.http_server.check_binary", 0)))
-            with Path().open(filename, "rb") as file:
+            with open(filename, "rb") as file:
                 logger.debug(
                     eval(
                         utils.get_message("network.http_server.file_contents", 0),
@@ -517,7 +515,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0)),
             )
-            with Path().open(filename, "rb") as file:
+            with open(filename, "rb") as file:
                 return file.read()
 
         def get_file_contents(self, filename: str) -> str:
@@ -525,7 +523,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0)),
             )
-            with Path().open(filename, encoding="utf-8") as file:
+            with open(filename, encoding="utf-8") as file:
                 return file.read()
 
         def get_request(self, requested_file: str, data) -> bytes:
@@ -537,7 +535,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.requested_file", 0)),
             )
-            if not Path().exists(requested_file):
+            if not os.path.exists(requested_file):
                 return self.resource_not_found()
             if not self.has_permission_other(requested_file):
                 return self.resource_forbidden()
@@ -565,7 +563,7 @@ class network(metaclass=ABCMeta):
             """Return 405 not allowed status and gives allowed methods."""
             builder = network.ResponseBuilder()
             builder.set_status("405", "METHOD NOT ALLOWED")
-            allowed = f"{'GET'}, {'POST'}"
+            allowed = "GET, POST"
             builder.add_header("Allow", allowed)
             builder.add_header("Connection", "close")
             return builder.build()
@@ -889,7 +887,9 @@ class commands(metaclass=ABCMeta):
             players_access: int = accesses["server"]
         else:
             players_access: int = utils.get_player(executer).access
-        compiled: list = command.split()  # compiled[0]主命令, compiled[1:]为参数
+        compiled: list = (
+            command.split()
+        )  # compiled[0][0]主命令, compiled[1][1:]为参数 [0]:正常传参 [1]:关键词传参
         try:
             if compiled[0] not in commands.command_access:
                 if compiled[0] in commands.alias:
@@ -1042,10 +1042,10 @@ class commands(metaclass=ABCMeta):
         out = eval(utils.get_message("command.clean_logs", 0))
         logger.info(out)
         for filename in os.listdir(folder_path):
-            file_path = Path().join(folder_path, filename)  # 获取文件路径
-            if Path().isfile(file_path):  # 判断是否为文件
+            file_path = os.path.join(folder_path, filename)  # 获取文件路径
+            if os.path.isfile(file_path):  # 判断是否为文件
                 try:
-                    Path().remove(file_path)  # 删除文件
+                    os.path.remove(file_path)  # 删除文件
                 except PermissionError:
                     new_info = eval(utils.get_message("command.clean_logs", -1))
                     logger.warning(new_info)
@@ -1129,7 +1129,7 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("network.player.duplicate_ban", 0))
             logger.error(out)
             return out
-        with Path().open("banlist.txt", "a", encoding="utf-8") as ban_file:
+        with open("banlist.txt", "a", encoding="utf-8") as ban_file:
             ban_file.write(player_name + "\n")
         banlist.append(player_name)
         commands.kick(player_name)
@@ -1149,9 +1149,9 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("network.player.never_ban", 0))
             logger.warning(out)
             return out
-        with Path().open("banlist.txt", encoding="utf-8") as file:
+        with open("banlist.txt", encoding="utf-8") as file:
             lines = file.readlines()
-        with Path().open("banlist.txt", "w", encoding="utf-8") as write_file:
+        with open("banlist.txt", "w", encoding="utf-8") as write_file:
             for file_line in lines:
                 if file_line.strip() != player_name:
                     write_file.write(file_line)
@@ -1191,14 +1191,14 @@ class commands(metaclass=ABCMeta):
 config = {}
 
 try:
-    with Path().open("./config/config.cfg", encoding="utf-8") as f:
+    with open("./config/config.cfg", encoding="utf-8") as f:
         for line in f.readlines():
             config_dict = line.split("//")[0].strip().split(" = ")
             config[config_dict[0]] = config_dict[1]
 except FileNotFoundError:
-    if not Path().exists("./config/"):
-        Path().mkdir("./config/")
-    with Path().open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
+    if not os.path.exists("./config/"):
+        os.path.mkdir("./config/")
+    with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
         f.write(
             """
                 HTTP_PORT = 3872
@@ -1219,7 +1219,7 @@ except FileNotFoundError:
 lang = {}
 _COMMENTING = False
 try:
-    with Path().open(
+    with open(
         "./lang/" + utils.query_config("LANGUAGE") + ".lang",
         encoding="utf-8",
     ) as f:
@@ -1254,8 +1254,8 @@ try:
                 )
             lang[f"{_loading[0]}.{_loading[1]}"] = _loading[2]
 except FileNotFoundError:
-    if not Path().exists("./lang/"):
-        Path().mkdir("./lang/")
+    if not os.path.exists("./lang/"):
+        os.path.mkdir("./lang/")
     logger.critical("语言文件不存在. ")
     os._exit(0)
 
@@ -1263,7 +1263,7 @@ logger.debug(eval(utils.get_message("root.loaded_language", 0)))
 
 try:
     for _plugin in os.listdir("./plugins/"):
-        with Path().open("./plugins/" + _plugin, encoding="utf-8") as f:
+        with open("./plugins/" + _plugin, encoding="utf-8") as f:
             try:
                 exec(f.read())
             except Exception as e:
@@ -1272,15 +1272,15 @@ try:
                 game.error_stop()
         logger.debug(eval(utils.get_message("root.loaded", 0)))
 except FileNotFoundError:
-    if not Path().exists("./plugins/"):
-        Path().mkdir("./plugins/")
+    if not os.path.exists("./plugins/"):
+        os.path.mkdir("./plugins/")
 logger.debug(eval(utils.get_message("root.loaded_plugins", 0)))
 
 try:
-    with Path().open("banlist.txt", encoding="utf-8") as f:
+    with open("banlist.txt", encoding="utf-8") as f:
         banlist = [ban.strip() for ban in f.readlines()]
 except FileNotFoundError:
-    with Path().open("banlist.txt", "w", encoding="utf-8") as f:
+    with open("banlist.txt", "w", encoding="utf-8") as f:
         banlist = []
         f.write("")
 
