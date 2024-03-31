@@ -19,15 +19,13 @@ import typing
 from abc import ABCMeta, abstractmethod
 from contextlib import suppress
 from mimetypes import types_map as mime_types
+from pathlib import Path
 
 import websockets
 from colorama import Fore, init
 from fuzzywuzzy import process
 from loguru import logger
 from rich.traceback import install as install_rich_traceback
-
-# from pathlib import Path TODO: open to path
-
 
 init(autoreset=True)
 logger.remove()
@@ -494,7 +492,7 @@ class network(metaclass=ABCMeta):
         def should_return_binary(self, filename: str) -> bool:
             """Check file is binary."""
             logger.debug(eval(utils.get_message("network.http_server.check_binary", 0)))
-            with open(filename, "rb") as file:
+            with Path(filename).open("rb") as file:
                 logger.debug(
                     eval(
                         utils.get_message("network.http_server.file_contents", 0),
@@ -515,7 +513,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0)),
             )
-            with open(filename, "rb") as file:
+            with Path(filename).open("rb") as file:
                 return file.read()
 
         def get_file_contents(self, filename: str) -> str:
@@ -800,26 +798,32 @@ class network(metaclass=ABCMeta):
 class commands(metaclass=ABCMeta):
     """All the commands over here."""
 
-    class CommandNotFoundError(Exception):
+    class _CommandNotFoundError(Exception):
         """A signal means command not found."""
 
         def __init__(self, command: str) -> None:
             super().__init__(f"Command {command} not found.")
 
-    class RedirectToAlias(Exception):
+    class _RedirectToAlias(Exception):
         """A signal means executed command is defined in alias list."""
 
         def __init__(self, command: str) -> None:
+            """Preset information."""
             super().__init__(f"Command {command} is defined in alias.")
 
-    class AsyncFunction(Exception):
+    class _AsyncFunction(Exception):
         """is a async function, execute it using asyncio.run()."""
 
         def __init__(self, command: str) -> None:
+            """Preset information."""
             super().__init__(f"Command {command} is defined in alias.")
 
-    class PrivateFunction(Exception):
+    class _PrivateFunction(Exception):
         """command cannot call normally."""
+
+        def __init__(self, command: str) -> None:
+            """Preset information."""
+            super().__init__(f"Command {command} is a private command.")
 
     command_access: typing.ClassVar[dict[str, int]] = {
         "execute": 1,  # 执行命令
@@ -852,11 +856,14 @@ class commands(metaclass=ABCMeta):
     private_commands: typing.ClassVar[list[str]] = [  # 设置内部方法 禁止调用
         "execute",
         "call_async",
+        "say",
+        "parse_parameters",
     ]
 
     @staticmethod
     @abstractmethod
     def parse_parameters(compiled: list) -> list:
+        """Parse functionn parameters."""
         with suppress(AttributeError):
             param_count = utils.get_param_count(getattr(commands, compiled[0]))
             if param_count > 0:
@@ -893,10 +900,10 @@ class commands(metaclass=ABCMeta):
         try:
             if compiled[0] not in commands.command_access:
                 if compiled[0] in commands.alias:
-                    raise commands.RedirectToAlias(
+                    raise commands._RedirectToAlias(
                         compiled[0],
                     )
-                raise commands.CommandNotFoundError(
+                raise commands._CommandNotFoundError(
                     compiled[0],
                 )
             compiled = commands.parse_parameters(compiled)
@@ -908,7 +915,7 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
-        except commands.CommandNotFoundError:
+        except commands._CommandNotFoundError:
             if (
                 commands.command_access.get(compiled[0]) is None
                 and commands.alias.get(compiled[0]) is None
@@ -930,7 +937,7 @@ class commands(metaclass=ABCMeta):
                         ),
                     )
                 return out
-        except commands.RedirectToAlias:
+        except commands._RedirectToAlias:
             compiled[0] = commands.alias[compiled[0]]
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.alias_execute", 0)))
@@ -940,14 +947,14 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
-        except commands.AsyncFunction:
+        except commands._AsyncFunction:
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
                 return asyncio.run(getattr(commands, compiled[0])(*compiled[1:]))
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)
             return out
-        except commands.PrivateFunction:
+        except commands._PrivateFunction:
             out = eval(utils.get_message("command.execute_private", 0))
             logger.warning(out)
             return out
@@ -1129,7 +1136,7 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("network.player.duplicate_ban", 0))
             logger.error(out)
             return out
-        with open("banlist.txt", "a", encoding="utf-8") as ban_file:
+        with Path("banlist.txt").open("a", encoding="utf-8") as ban_file:
             ban_file.write(player_name + "\n")
         banlist.append(player_name)
         commands.kick(player_name)
@@ -1149,9 +1156,9 @@ class commands(metaclass=ABCMeta):
             out = eval(utils.get_message("network.player.never_ban", 0))
             logger.warning(out)
             return out
-        with open("banlist.txt", encoding="utf-8") as file:
+        with Path("banlist.txt").open(encoding="utf-8") as file:
             lines = file.readlines()
-        with open("banlist.txt", "w", encoding="utf-8") as write_file:
+        with Path("banlist.txt").open("w", encoding="utf-8") as write_file:
             for file_line in lines:
                 if file_line.strip() != player_name:
                     write_file.write(file_line)
@@ -1170,7 +1177,10 @@ class commands(metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    async def say(message) -> None:
+    async def say(
+        message: str,
+        sender: str = utils.query_config("SYSTEM_NAME"),
+    ) -> None:
         """Say a message to websocket server."""
         await asyncio.wait(
             [
