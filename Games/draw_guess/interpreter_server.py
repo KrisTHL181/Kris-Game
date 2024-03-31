@@ -204,6 +204,14 @@ class utils(metaclass=ABCMeta):
     def get_param_count(function: typing.Callable) -> int:
         """Get required count of parameter."""
         return len(inspect.signature(function).parameters.items())
+    @staticmethod
+    @abstractmethod
+    def hasvalue(types: object, value: typing.Any) -> bool:
+        """Get whether this class has a specified value."""
+        with suppress(TypeError):
+            if value in vars(types).values():
+                return True
+        return False
 
 
 class game(metaclass=ABCMeta):
