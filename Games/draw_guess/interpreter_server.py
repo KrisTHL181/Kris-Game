@@ -47,7 +47,7 @@ accesses: dict = {"server": 4, "admin": 3, "player": 2, "spectators": 1, "banned
 class player:
     """A class for player."""
 
-    def __init__(self, name: str, websocket, access: int = 2):
+    def __init__(self, name: str, websocket, access: int = 2) -> None:
         """Create variables."""
         self.name = name
         self.websocket = websocket
@@ -134,10 +134,7 @@ class utils(metaclass=ABCMeta):
     @functools.cache
     def query_config(key: str) -> str:
         """Query config in config file."""
-        try:
-            return str(config[key]).strip()
-        except KeyError:
-            return f"'未定义的配置项: {key}'"
+        return str(config.get(key, f"'未定义的配置项: {key}'")).strip()
 
     @staticmethod
     @abstractmethod
@@ -204,6 +201,7 @@ class utils(metaclass=ABCMeta):
     def get_param_count(function: typing.Callable) -> int:
         """Get required count of parameter."""
         return len(inspect.signature(function).parameters.items())
+
     @staticmethod
     @abstractmethod
     def hasvalue(types: object, value: typing.Any) -> bool:
@@ -529,7 +527,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.file_contents", 0)),
             )
-            with open(filename, encoding="utf-8") as file:
+            with Path(filename).open(encoding="utf-8") as file:
                 return file.read()
 
         def get_request(self, requested_file: str, data) -> bytes:
@@ -541,7 +539,7 @@ class network(metaclass=ABCMeta):
             logger.debug(
                 eval(utils.get_message("network.http_server.requested_file", 0)),
             )
-            if not os.path.exists(requested_file):
+            if not Path(requested_file).exists():
                 return self.resource_not_found()
             if not self.has_permission_other(requested_file):
                 return self.resource_forbidden()
@@ -791,12 +789,12 @@ class network(metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def run_ws_server() -> typing.NoReturn:
+    def run_ws_server() -> None:
         """Run websocket server."""
         asyncio.set_event_loop(asyncio.new_event_loop())
         start_server = websockets.serve(
             network.ws_server,
-            "0.0.0.0",
+            utils.query_config("LISTEN_IP"),
             int(utils.query_config("WS_PORT")),
         )
         asyncio.get_event_loop().run_until_complete(start_server)
@@ -1057,10 +1055,10 @@ class commands(metaclass=ABCMeta):
         out = eval(utils.get_message("command.clean_logs", 0))
         logger.info(out)
         for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)  # 获取文件路径
-            if os.path.isfile(file_path):  # 判断是否为文件
+            file_path = Path(folder_path) / filename  # 获取文件路径
+            if Path(file_path).is_file():  # 判断是否为文件
                 try:
-                    os.path.remove(file_path)  # 删除文件
+                    Path(file_path).unlink()  # 删除文件
                 except PermissionError:
                     new_info = eval(utils.get_message("command.clean_logs", -1))
                     logger.warning(new_info)
@@ -1187,7 +1185,6 @@ class commands(metaclass=ABCMeta):
     @abstractmethod
     async def say(
         message: str,
-        sender: str = utils.query_config("SYSTEM_NAME"),
     ) -> None:
         """Say a message to websocket server."""
         await asyncio.wait(
@@ -1209,14 +1206,14 @@ class commands(metaclass=ABCMeta):
 config = {}
 
 try:
-    with open("./config/config.cfg", encoding="utf-8") as f:
+    with Path("./config/config.cfg").open(encoding="utf-8") as f:
         for line in f.readlines():
             config_dict = line.split("//")[0].strip().split(" = ")
             config[config_dict[0]] = config_dict[1]
 except FileNotFoundError:
-    if not os.path.exists("./config/"):
-        os.path.mkdir("./config/")
-    with open("./config/commands_conf.cfg", "w", encoding="utf-8") as f:
+    if not Path("./config/").exists():
+        Path("./config/").mkdir()
+    with Path("./config/commands_conf.cfg").open("w", encoding="utf-8") as f:
         f.write(
             """
                 HTTP_PORT = 3872
@@ -1237,15 +1234,17 @@ except FileNotFoundError:
 lang = {}
 _COMMENTING = False
 try:
-    with open(
-        "./lang/" + utils.query_config("LANGUAGE") + ".lang",
+    with Path("./lang/" + utils.query_config("LANGUAGE") + ".lang").open(
+        "r",
         encoding="utf-8",
     ) as f:
         readlines = f.readlines()
         if "No Replace" not in readlines[0]:
-            replace_punctuations: dict = ast.literal_eval("{" + readlines[0] + "}")
+            replace_punctuations: dict[str, str] = ast.literal_eval(
+                "{" + readlines[0] + "}",
+            )
         else:
-            replace_punctuations: dict = {}
+            replace_punctuations: dict[str, str] = {}
         for langs in readlines[1:]:
             if _COMMENTING:
                 continue
@@ -1272,8 +1271,8 @@ try:
                 )
             lang[f"{_loading[0]}.{_loading[1]}"] = _loading[2]
 except FileNotFoundError:
-    if not os.path.exists("./lang/"):
-        os.path.mkdir("./lang/")
+    if not Path("./lang/").exists():
+        Path("./lang/").mkdir()
     logger.critical("语言文件不存在. ")
     os._exit(0)
 
@@ -1281,7 +1280,7 @@ logger.debug(eval(utils.get_message("root.loaded_language", 0)))
 
 try:
     for _plugin in os.listdir("./plugins/"):
-        with open("./plugins/" + _plugin, encoding="utf-8") as f:
+        with Path("./plugins/" + _plugin).open(encoding="utf-8") as f:
             try:
                 exec(f.read())
             except Exception as e:
@@ -1290,15 +1289,15 @@ try:
                 game.error_stop()
         logger.debug(eval(utils.get_message("root.loaded", 0)))
 except FileNotFoundError:
-    if not os.path.exists("./plugins/"):
-        os.path.mkdir("./plugins/")
+    if not Path("./plugins/").exists():
+        Path("./plugins/").mkdir()
 logger.debug(eval(utils.get_message("root.loaded_plugins", 0)))
 
 try:
-    with open("banlist.txt", encoding="utf-8") as f:
+    with Path("banlist.txt").open(encoding="utf-8") as f:
         banlist = [ban.strip() for ban in f.readlines()]
 except FileNotFoundError:
-    with open("banlist.txt", "w", encoding="utf-8") as f:
+    with Path("banlist.txt").open("w", encoding="utf-8") as f:
         banlist = []
         f.write("")
 
@@ -1308,7 +1307,7 @@ logger.debug(eval(utils.get_message("root.loaded_bans", 0)))
 def run(
     enabled_shell: bool = True,
     override_sys_excepthook: bool = True,
-) -> typing.NoReturn:
+) -> None:
     """Run all server."""
     logger.debug(eval(utils.get_message("root.run", 0)))
     try:
@@ -1317,7 +1316,10 @@ def run(
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
     try:
-        network.HTTP11Server("0.0.0.0", int(utils.query_config("HTTP_PORT"))).start()
+        network.HTTP11Server(
+            utils.query_config("LISTEN_IP"),
+            int(utils.query_config("HTTP_PORT")),
+        ).start()
     except RuntimeError:
         logger.critical(eval(utils.get_message("root.ws_network_run_error", 0)))
         game.error_stop()
@@ -1331,5 +1333,5 @@ def run(
 
 
 if __name__ == "__main__":
-    print(eval(utils.get_message("game.command_interpreter.start_info", 0)))
+    sys.stdout.write(eval(utils.get_message("game.command_interpreter.start_info", 0)))
     run()
