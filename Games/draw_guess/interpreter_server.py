@@ -27,21 +27,8 @@ from fuzzywuzzy import process
 from loguru import logger
 from rich.traceback import install as install_rich_traceback
 
-init(autoreset=True)
-logger.remove()
-if __name__ == "__main__":
-    logger.add(sys.stderr, level=20, enqueue=True)  # 命令行句柄
-logger.add(
-    f"./logs/{time.strftime('%Y.%m.%d.log')}",
-    encoding="utf-8",
-    enqueue=True,
-    rotation="00:00",
-    level=0,
-    colorize=False,
-)  # 文件句柄
-
 MIN_PLAYERS: int = 2
-accesses: dict = {"server": 4, "admin": 3, "player": 2, "spectators": 1, "banned": 0}
+ACCESSES: dict = {"server": 4, "admin": 3, "player": 2, "spectators": 1, "banned": 0}
 
 
 class player:
@@ -76,22 +63,18 @@ class utils(metaclass=ABCMeta):
     @abstractmethod
     def get_players() -> list:
         """Get all player's name."""
-        return [iter_player.get_name() for iter_player in players]
+        return [iter_player.name for iter_player in players]
 
     @staticmethod
     @abstractmethod
     def get_player(name: str) -> player:
         """Get player object by name."""
         if name == utils.query_config("SYSTEM_NAME"):
-            return player(utils.query_config("SYSTEM_NAME"), None, accesses["server"])
+            return player(utils.query_config("SYSTEM_NAME"), None, ACCESSES["server"])
 
         return next(
             iter(
-                [
-                    iter_player
-                    for iter_player in players
-                    if iter_player.get_name() == name
-                ],
+                [iter_player for iter_player in players if iter_player.name == name],
             ),
         )
 
@@ -164,28 +147,12 @@ class utils(metaclass=ABCMeta):
     @abstractmethod
     def replace_escape_string(string: str) -> str:
         """Replace escape chars.."""
-        string = string.replace("\\n", chr(10))
-        string = string.replace("\\t", int(utils.query_config("SPACE_COUNT")) * " ")
-        string = string.replace("\\a", chr(7))
-        string = string.replace("\\b", chr(8))
-        string = string.replace("\\t", chr(9))
-        string = string.replace("\\f", chr(12))
-        string = string.replace("\\t", chr(9))
-        return string.replace("\\r", chr(13))
-
-    @staticmethod
-    @abstractmethod
-    def parse(string: str, **variables: typing.Any) -> str:
-        """Parse f-string."""
-        try:
-            return utils.replace_escape_string(string.format(**variables))
-        except KeyError:
-            for placeholder in re.findall(utils.placeholder_replacer, string):
-                string = string.replace(
-                    f"{{{placeholder}}}",
-                    str(variables.get(placeholder, placeholder)),
-                )
-            return utils.replace_escape_string(string)
+        string = string.replace("\\n", "\n")
+        string = string.replace("\\a", "\a")
+        string = string.replace("\\b", "\b")
+        string = string.replace("\\t", "\t")
+        string = string.replace("\\f", "\f")
+        return string.replace("\\r", "\r")
 
     @staticmethod
     @abstractmethod
@@ -232,12 +199,6 @@ class game(metaclass=ABCMeta):
                 logger.error(
                     eval(
                         utils.get_message("game.command_interpreter.type_error", 0),
-                    ),
-                )
-            except SyntaxError:
-                logger.error(
-                    eval(
-                        utils.get_message("game.command_interpreter.syntax_error", 0),
                     ),
                 )
             except KeyboardInterrupt:
@@ -348,8 +309,8 @@ class network(metaclass=ABCMeta):
         def build(self, newline: str = "\r\n") -> bytes:
             """Build response text."""
             response = f"{self.status}{newline}"
-            for i in self.headers:
-                response += i + f"{newline}"
+            for head in self.headers:
+                response += head + f"{newline}"
             return f"{response}{newline}{newline}".encode() + self.content
 
     class HTTP11Server(threading.Thread):
@@ -385,6 +346,9 @@ class network(metaclass=ABCMeta):
                     )
                     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             else:
+                logger.warning(
+                    eval(utils.get_message("network.https_server.start_http", 0)),
+                )
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         def run(self) -> typing.NoReturn:
@@ -412,40 +376,6 @@ class network(metaclass=ABCMeta):
         ) -> None:
             """Process response and send it."""
             logger.debug(eval(utils.get_message("network.http_server.connect", 0)))
-            if self.request_times.get(
-                client_addr[0],
-                float("inf"),
-            ) - time.time() <= float(
-                utils.query_config("DDOS_DETECT_TIME"),
-            ):
-                if self.warnlist.count(client_addr[0]) >= int(
-                    utils.query_config("RAISE_DDOS_ALARM"),
-                ):
-                    logger.warning(
-                        eval(utils.get_message("network.http_server.ddos", 0)),
-                    )
-                    self.request_times[client_addr[0]] = time.time()
-                    self.warnlist = [
-                        warning
-                        for warning in self.warnlist
-                        if warning != client_addr[0]
-                    ]
-                    return
-                if client_addr[0] not in self.warnlist:
-                    logger.info(
-                        eval(utils.get_message("network.http_server.detect_ddos", 0)),
-                    )
-                self.warnlist.append(client_addr[0])
-            elif time.time() - self.request_times.get(
-                client_addr[0],
-                time.time(),
-            ) >= int(utils.query_config("STOP_DDOS_ALARM")):
-                logger.info(
-                    eval(utils.get_message("network.http_server.wrong_detect_ddos", 0)),
-                )
-                with suppress(ValueError):
-                    self.warnlist.remove(client_addr[0])
-            self.request_times[client_addr[0]] = time.time()
             buffer = network.recv(client_sock)
             req = b"".join(buffer).decode("utf-8")
             response = self.process_response(req)
@@ -456,7 +386,6 @@ class network(metaclass=ABCMeta):
                 return
             client_sock.sendall(response)
             logger.debug(eval(utils.get_message("network.http_server.send_back", 0)))
-            # clean up
             logger.debug(eval(utils.get_message("network.http_server.full", 0)))
             client_sock.shutdown(socket.SHUT_WR)
             client_sock.close()
@@ -485,11 +414,18 @@ class network(metaclass=ABCMeta):
                 return b""
 
             requested_file = request_words[1][1:]
-            if request_words[0] == "GET":
-                return self.get_request(requested_file, formatted_data)
-            if request_words[0] == "POST":
-                return self.post_request(requested_file, formatted_data)
-            return self.method_not_allowed()
+            try:
+                if request_words[0] == "GET":
+                    return self.get_request(requested_file, formatted_data)
+                if request_words[0] == "POST":
+                    return self.post_request(requested_file, formatted_data)
+                return self.method_not_allowed()
+            except Exception as exception:
+                logger.exception(exception)
+                logger.warning(
+                    eval(utils.get_message("network.http_server.server_error", 0))
+                )
+                return self.server_error()
 
         def has_permission_other(self, requested_file: str) -> bool:
             """Check readable permissions."""
@@ -602,7 +538,18 @@ class network(metaclass=ABCMeta):
                     "application/octet-stream",
                 ),
             )
+            logger.debug(
+                eval(utils.get_message("network.http_server.requested_file", 0)),
+            )
             builder.set_content(self.get_file_contents(requested_file))
+            return builder.build()
+
+        def server_error(self) -> bytes:
+            builder = network.ResponseBuilder()
+            builder.set_status("500", "SERVER ERROR")
+            builder.add_header("Connection", "close")
+            builder.add_header("Content-Type", mime_types[".html"])
+            builder.set_content(self.get_file_contents("./html_error/500.html"))
             return builder.build()
 
     @staticmethod
@@ -870,24 +817,29 @@ class commands(metaclass=ABCMeta):
     @abstractmethod
     def parse_parameters(compiled: list) -> list:
         """Parse functionn parameters."""
+        keyword_argument = {}
+        for command in compiled:
+            if "=" in command:
+                parsing_argument = command.split("=")
+                keyword_argument[parsing_argument[0], parsing_argument[1]]
         with suppress(AttributeError):
             param_count = utils.get_param_count(getattr(commands, compiled[0]))
             if param_count > 0:
                 param_types = utils.get_param_type(getattr(commands, compiled[0]))
-                for index, parsing_type in enumerate(compiled[1:]):
+                for index, parsing_type in enumerate(compiled[1:], start=1):
                     if (
                         hasattr(typing, repr(param_types[1][index]).rsplit(".", 1)[-1])
                         or param_types[1][index] is param_types[0].empty
                     ):  # 不用解析typing的子类
                         continue
                     try:
-                        compiled[index + 1] = param_types[1][index](parsing_type)
+                        compiled[index] = param_types[1][index](parsing_type)
                     except ValueError:
                         logger.warning(
                             eval(utils.get_message("command.execute.parse_failed", 0)),
                         )
                         continue
-        return compiled
+        return compiled, keyword_argument
 
     @staticmethod
     @abstractmethod
@@ -897,14 +849,14 @@ class commands(metaclass=ABCMeta):
         if not command:
             return None
         if executer == utils.query_config("SYSTEM_NAME"):
-            players_access: int = accesses["server"]
+            players_access: int = ACCESSES["server"]
         else:
             players_access: int = utils.get_player(executer).access
         compiled: list = (
             command.split()
         )  # compiled[0][0]主命令, compiled[1][1:]为参数 [0]:正常传参 [1]:关键词传参
         try:
-            if compiled[0] not in commands.command_access:
+            if compiled[0] not in utils.get_commands():
                 if compiled[0] in commands.alias:
                     raise commands._RedirectToAlias(
                         compiled[0],
@@ -913,11 +865,12 @@ class commands(metaclass=ABCMeta):
                     compiled[0],
                 )
             compiled = commands.parse_parameters(compiled)
-            run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
+            keyword_arg = compiled[1]
+            run_compiled = f"commands.{compiled[0][0]}({(','.join(compiled[1:]))})"
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
-                return getattr(commands, compiled[0])(*compiled[1:])
+                return getattr(commands, compiled[0][0])(*compiled[0][1:], *compiled[1])
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
@@ -1050,12 +1003,12 @@ class commands(metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def clean_logs(folder_path: str = "./logs/") -> str:
+    def clean_logs() -> str:
         """Remove all logs."""
         out = eval(utils.get_message("command.clean_logs", 0))
         logger.info(out)
-        for filename in os.listdir(folder_path):
-            file_path = Path(folder_path) / filename  # 获取文件路径
+        for filename in os.listdir(utils.query_config("LOG_PATH")):
+            file_path = Path(utils.query_config("LOG_PATH")) / filename  # 获取文件路径
             if Path(file_path).is_file():  # 判断是否为文件
                 try:
                     Path(file_path).unlink()  # 删除文件
@@ -1079,7 +1032,7 @@ class commands(metaclass=ABCMeta):
     def player_access(player_name: str, access_name: str) -> str:
         """Change player's access."""
         if player_name in utils.get_players():
-            new_access = accesses.get(access_name)
+            new_access = ACCESSES.get(access_name)
             if new_access is None:
                 out = eval(utils.get_message("command.player_access", -3))
                 logger.warning(out)
@@ -1276,6 +1229,19 @@ except FileNotFoundError:
     logger.critical("语言文件不存在. ")
     os._exit(0)
 
+init(autoreset=True)
+logger.remove()
+if __name__ == "__main__":
+    logger.add(sys.stderr, level=20, enqueue=True)  # 命令行句柄
+logger.add(
+    f"{utils.query_config('LOG_PATH')}{time.strftime('%Y.%m.%d.log')}",
+    encoding="utf-8",
+    enqueue=True,
+    rotation="00:00",
+    level=0,
+    colorize=False,
+) # 文件句柄
+
 logger.debug(eval(utils.get_message("root.loaded_language", 0)))
 
 try:
@@ -1284,8 +1250,8 @@ try:
             try:
                 exec(f.read())
             except Exception as e:
-                logger.error(eval(utils.get_message("plugin.load_error", 0)))
                 logger.exception(e)
+                logger.error(eval(utils.get_message("plugin.load_error", 0)))
                 game.error_stop()
         logger.debug(eval(utils.get_message("root.loaded", 0)))
 except FileNotFoundError:
@@ -1335,3 +1301,5 @@ def run(
 if __name__ == "__main__":
     sys.stdout.write(eval(utils.get_message("game.command_interpreter.start_info", 0)))
     run()
+
+# TODO: eval(log) to log.format(*infos)
