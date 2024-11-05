@@ -2,8 +2,10 @@
 """A draw&guess game, includes websocket server and http server."""
 from __future__ import annotations
 
+import __main__
 import ast
 import asyncio
+import atexit
 import functools
 import inspect
 import json
@@ -22,7 +24,8 @@ from mimetypes import types_map as mime_types
 from pathlib import Path
 
 import websockets
-from colorama import Fore, init
+from colorama import Fore
+from colorama import init as colorama_init
 from fuzzywuzzy import process
 from loguru import logger
 from rich.traceback import install as install_rich_traceback
@@ -44,6 +47,8 @@ class player:
 
 
 players = []
+plugins = []
+colorama_init(autoreset=True)
 
 
 class utils(metaclass=ABCMeta):
@@ -177,6 +182,18 @@ class utils(metaclass=ABCMeta):
             if value in vars(types).values():
                 return True
         return False
+
+    @staticmethod
+    @abstractmethod
+    def get_commands() -> list:
+        """Get the command list of `commands`."""
+        return [
+            method
+            for method in dir(commands)
+            if not method.startswith("_")
+            and callable(getattr(commands, method))
+            and method not in commands.private_commands
+        ]
 
 
 class game(metaclass=ABCMeta):
@@ -751,27 +768,33 @@ class network(metaclass=ABCMeta):
 class commands(metaclass=ABCMeta):
     """All the commands over here."""
 
-    class _CommandNotFoundError(Exception):
+    class _CommandError(Exception):
+        """The basical Exception(Signal) class in commands."""
+
+    class _CommandSignal(Exception):
+        """Mean it is a signal of command."""
+
+    class _CommandNotFoundError(_CommandError):
         """A signal means command not found."""
 
         def __init__(self, command: str) -> None:
             super().__init__(f"Command {command} not found.")
 
-    class _RedirectToAlias(Exception):
+    class _RedirectToAlias(_CommandSignal):
         """A signal means executed command is defined in alias list."""
 
         def __init__(self, command: str) -> None:
             """Preset information."""
             super().__init__(f"Command {command} is defined in alias.")
 
-    class _AsyncFunction(Exception):
+    class _AsyncFunction(_CommandSignal):
         """is a async function, execute it using asyncio.run()."""
 
         def __init__(self, command: str) -> None:
             """Preset information."""
-            super().__init__(f"Command {command} is defined in alias.")
+            super().__init__(f"Command {command} is an async function.")
 
-    class _PrivateFunction(Exception):
+    class _PrivateFunction(_CommandSignal):
         """command cannot call normally."""
 
         def __init__(self, command: str) -> None:
@@ -810,36 +833,7 @@ class commands(metaclass=ABCMeta):
         "execute",
         "call_async",
         "say",
-        "parse_parameters",
     ]
-
-    @staticmethod
-    @abstractmethod
-    def parse_parameters(compiled: list) -> list:
-        """Parse functionn parameters."""
-        keyword_argument = {}
-        for command in compiled:
-            if "=" in command:
-                parsing_argument = command.split("=")
-                keyword_argument[parsing_argument[0], parsing_argument[1]]
-        with suppress(AttributeError):
-            param_count = utils.get_param_count(getattr(commands, compiled[0]))
-            if param_count > 0:
-                param_types = utils.get_param_type(getattr(commands, compiled[0]))
-                for index, parsing_type in enumerate(compiled[1:], start=1):
-                    if (
-                        hasattr(typing, repr(param_types[1][index]).rsplit(".", 1)[-1])
-                        or param_types[1][index] is param_types[0].empty
-                    ):  # 不用解析typing的子类
-                        continue
-                    try:
-                        compiled[index] = param_types[1][index](parsing_type)
-                    except ValueError:
-                        logger.warning(
-                            eval(utils.get_message("command.execute.parse_failed", 0)),
-                        )
-                        continue
-        return compiled, keyword_argument
 
     @staticmethod
     @abstractmethod
@@ -864,13 +858,13 @@ class commands(metaclass=ABCMeta):
                 raise commands._CommandNotFoundError(
                     compiled[0],
                 )
-            compiled = commands.parse_parameters(compiled)
-            keyword_arg = compiled[1]
-            run_compiled = f"commands.{compiled[0][0]}({(','.join(compiled[1:]))})"
+            run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
             logger.debug(eval(utils.get_message("command.run_compiled", 0)))
             if players_access >= commands.command_access[compiled[0]]:
                 logger.info(eval(utils.get_message("command.execute", 0)))
-                return getattr(commands, compiled[0][0])(*compiled[0][1:], *compiled[1])
+                return getattr(commands, compiled[0])(
+                    *compiled[1:]
+                )
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
@@ -1156,7 +1150,72 @@ class commands(metaclass=ABCMeta):
         )
 
 
+class PluginError(Exception):
+    """Error happend during loading plugin."""
+
+
+class Plugin:
+    """A class for plugin system."""
+
+    def __init__(self, filename: str | None = None, code: str | None = None) -> None:
+        """Load a plugin."""
+        if filename and code:
+            raise PluginError(eval(utils.get_message("plugin.too_many_args", 0)))
+        if filename:
+            with Path(filename).open() as plugin:
+                self.file = plugin.read()
+        elif code:
+            self.file = code
+        self.code = {}
+        exec(self.file, self.code)
+        if not self.code or self.code.get("__metadata__") is None:
+            msg = eval(utils.get_message("plugin.missing_key", 0))
+            raise PluginError(msg)
+        self.metadata = self.code["__metadata__"]
+        self.name = self.metadata["module_name"]
+        self.version = self.metadata["module_version"]
+        self.call_event("on_plugin_load")
+        atexit_method = self.code.get("at_exit")
+        logger.info(eval(utils.get_message("plugin.registed_atexit", 0)))
+        if atexit_method is not None:
+            atexit.register(atexit_method)
+        logger.info(eval(utils.get_message("plugin.loaded_plugin", 0)))
+
+    def __del__(self) -> None:
+        """Call 'on_plugin_unload'."""
+        self.call_event("on_plugin_unload")
+
+    def load(self) -> None:
+        """Load plugin code into __main__."""
+        __main__.__dict__ = {**vars(__main__), **self.code}
+
+    def trigger_event(self, event_name: str, *args, **kwargs) -> object:
+        """Trigging an event."""
+        event_func = self.code.get(event_name, None)
+        if event_func:
+            return event_func(*args, **kwargs)
+        msg = f"Event '{event_name}' not found in plugin."
+        raise PluginError(msg)
+
+    def call_event(self, event_name: str, *args, **kwargs) -> object:
+        """Call an event."""
+        if self.code.get(event_name) is not None:
+            return self.trigger_event(event_name, *args, **kwargs)
+        return None
+
+    def bind_event(self, method: typing.Callable, event_name: str) -> typing.Callable:
+        """Bind an event to a method."""
+
+        def wrapped_method(*args, **kwargs) -> object:
+            """Add an event to the method."""
+            self.call_event(event_name, *args, **kwargs)
+            return method(*args, **kwargs)
+
+        return wrapped_method
+
+
 config = {}
+
 
 try:
     with Path("./config/config.cfg").open(encoding="utf-8") as f:
@@ -1178,9 +1237,10 @@ except FileNotFoundError:
                 PROMPT = >>>
                 SYSTEM_NAME = Kris
                 SPACE_COUNT = 4
-                HTTP_PATH = ..\\..\\
+                HTTP_PATH = ../../
                 HTTPS_CAFILE = cert.pem
                 MSPF = 175 // Milisecond per frame
+                PLUGIN_PATH = ./plugins/
             """.strip(),
         )
 
@@ -1229,7 +1289,6 @@ except FileNotFoundError:
     logger.critical("语言文件不存在. ")
     os._exit(0)
 
-init(autoreset=True)
 logger.remove()
 if __name__ == "__main__":
     logger.add(sys.stderr, level=20, enqueue=True)  # 命令行句柄
@@ -1240,23 +1299,24 @@ logger.add(
     rotation="00:00",
     level=0,
     colorize=False,
-) # 文件句柄
+)  # 文件句柄
 
 logger.debug(eval(utils.get_message("root.loaded_language", 0)))
 
 try:
-    for _plugin in os.listdir("./plugins/"):
-        with Path("./plugins/" + _plugin).open(encoding="utf-8") as f:
+    for _plugin in os.listdir(utils.query_config("PLUGIN_PATH")):
+        with Path(utils.query_config("PLUGIN_PATH") + _plugin).open(
+            encoding="utf-8"
+        ) as f:
             try:
-                exec(f.read())
+                plugins.append(Plugin(code=f.read()))
             except Exception as e:
                 logger.exception(e)
                 logger.error(eval(utils.get_message("plugin.load_error", 0)))
                 game.error_stop()
-        logger.debug(eval(utils.get_message("root.loaded", 0)))
 except FileNotFoundError:
-    if not Path("./plugins/").exists():
-        Path("./plugins/").mkdir()
+    if not Path(utils.query_config("PLUGIN_PATH")).exists():
+        Path(utils.query_config("PLUGIN_PATH")).mkdir()
 logger.debug(eval(utils.get_message("root.loaded_plugins", 0)))
 
 try:
