@@ -128,12 +128,10 @@ class utils(metaclass=ABCMeta):
     @abstractmethod
     def reverse_replace(string: str, old: str, new: str, max_count: int = -1) -> str:
         """Reverse string and replace string."""
-        # 从后往前查找旧字符串
         reversed_string = string[::-1]
         reversed_old = old[::-1]
         reversed_new = new[::-1]
 
-        # 替换
         if max_count == -1:
             reversed_result = reversed_string.replace(reversed_old, reversed_new)
         else:
@@ -143,7 +141,6 @@ class utils(metaclass=ABCMeta):
                 max_count,
             )
 
-        # 将结果反转回来
         return reversed_result[::-1]
 
     placeholder_replacer = re.compile("{(.*?)}")
@@ -363,7 +360,7 @@ class network(metaclass=ABCMeta):
                     )
                     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             else:
-                logger.warning(
+                logger.info(
                     eval(utils.get_message("network.https_server.start_http", 0)),
                 )
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -896,7 +893,9 @@ class commands(metaclass=ABCMeta):
                 logger.info(eval(utils.get_message("command.alias_execute", 0)))
                 run_compiled = f"commands.{compiled[0]}({(','.join(compiled[1:]))})"
                 logger.debug(eval(utils.get_message("command.run_compiled", 0)))
-                return getattr(commands, run_compiled[0])(*run_compiled[1:])
+                return getattr(commands, compiled[0])(
+                    *compiled[1:]
+                )
             out = eval(utils.get_message("command.execute.access_denied", 0))
             logger.warning(out)  # 权限不足
             return out
@@ -1162,7 +1161,7 @@ class Plugin:
         if filename and code:
             raise PluginError(eval(utils.get_message("plugin.too_many_args", 0)))
         if filename:
-            with Path(filename).open() as plugin:
+            with Path(os.path.split(__file__)[0] + utils.query_config("PLUGIN_PATH") + filename).open() as plugin:
                 self.file = plugin.read()
         elif code:
             self.file = code
@@ -1173,12 +1172,17 @@ class Plugin:
             raise PluginError(msg)
         self.metadata = self.code["__metadata__"]
         self.name = self.metadata["module_name"]
+        self.code["__name__"] = self.name
         self.version = self.metadata["module_version"]
+        self.id = self.metadata["module_id"]
+        for plugin in plugins:
+            if plugin.id == self.id:
+                raise PluginError(eval(utils.get_message("plugin.loading_duplicated", 0)))
         self.call_event("on_plugin_load")
         atexit_method = self.code.get("at_exit")
-        logger.info(eval(utils.get_message("plugin.registed_atexit", 0)))
         if atexit_method is not None:
             atexit.register(atexit_method)
+            logger.info(eval(utils.get_message("plugin.registed_atexit", 0)))
         logger.info(eval(utils.get_message("plugin.loaded_plugin", 0)))
 
     def __del__(self) -> None:
